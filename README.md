@@ -34,3 +34,4 @@ Construire un produit centré sur :
 - [Sprint 1 Kickoff](docs/sprint-1-kickoff.md)
 - [Architecture Baseline V1](docs/architecture-baseline-v1.md)
 - [ADR-001 Architecture Globale V1](docs/adr-001-architecture-globale-v1.md)
+- [Cycle Next Front-Driven Plan](docs/cycle-next-front-driven-plan.md)
