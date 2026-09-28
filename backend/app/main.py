@@ -99,7 +99,10 @@ def demo_response() -> AssistantResponse:
             text="En regle generale, la coherence site-programme-pratique guide les choix.",
             citations=[],
         ),
-        source_reglementaire_locale=None,
+        source_reglementaire_locale=ResponseSection(
+            text="Aucune source reglementaire locale disponible.",
+            citations=[],
+        ),
         warning_no_source=f"Aucune source locale disponible a {now}",
     )
 
@@ -176,7 +179,6 @@ def assistant_answer(request: AskRequest) -> AssistantResponse:
         ),
     )
 
-    local_section = None
     if local_item:
         local_section = ResponseSection(
             text=local_item.text,
@@ -188,9 +190,12 @@ def assistant_answer(request: AskRequest) -> AssistantResponse:
                 )
             ],
         )
-
-    warning = None
-    if not local_item:
+        warning = None
+    else:
+        local_section = ResponseSection(
+            text="Aucune source reglementaire locale disponible pour cette requete.",
+            citations=[],
+        )
         warning = "Aucune source reglementaire locale disponible pour cette requete."
 
     return AssistantResponse(

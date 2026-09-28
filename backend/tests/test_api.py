@@ -51,7 +51,7 @@ def test_assistant_answer_warns_when_no_local_source() -> None:
     response = client.post("/v1/assistant/answer", json=payload)
     assert response.status_code == 200
     body = response.json()
-    assert body["source_reglementaire_locale"] is None
+    assert body["source_reglementaire_locale"]["text"]
     assert body["warning_no_source"] is not None
 
 
@@ -67,7 +67,7 @@ def test_assistant_answer_multi_source_sections_present() -> None:
     body = response.json()
     assert body["cours"]["text"]
     assert body["regle_generale"]["text"]
-    assert body["source_reglementaire_locale"] is not None
+    assert body["source_reglementaire_locale"]["text"]
 
 
 def test_ingestion_then_retrieval_flow() -> None:

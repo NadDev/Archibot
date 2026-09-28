@@ -37,7 +37,7 @@ class AssistantResponse(BaseModel):
     schema_version: str = Field(default="v1")
     cours: ResponseSection
     regle_generale: ResponseSection
-    source_reglementaire_locale: Optional[ResponseSection] = None
+    source_reglementaire_locale: ResponseSection
     warning_no_source: Optional[str] = None
 
 
