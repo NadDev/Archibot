@@ -1,7 +1,7 @@
 # Architecture Baseline v1
 
 Date: 2026-09-28
-Statut: A valider par ARCHI + PM/PO + DEVEX
+Statut: Valide par ARCHI + PM/PO + DEVEX
 
 ## 1. Ce qui est deja defini (OK)
 - Vision produit, cible et perimetre MVP.

@@ -1,7 +1,7 @@
 # ADR-001 - Architecture Globale v1
 
 Date: 2026-09-28
-Status: Proposed (backend and hosting selected)
+Status: Accepted
 Owners: ARCHI, PM/PO, DevEx
 
 ## 1. Contexte
