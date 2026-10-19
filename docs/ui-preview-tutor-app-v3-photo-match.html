@@ -1,0 +1,1050 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ArchiProf - Interface de l'application</title>
+  <style>
+    :root {
+      --bg-wood: #d8c29a;
+      --bg-wood-dark: #c7b08c;
+      --panel: #f3e6d8;
+      --panel-2: #f6efe6;
+      --card: #fffdf9;
+      --line: #d7c7b2;
+      --ink: #2a271f;
+      --muted: #635b52;
+      --teal: #2c6f83;
+      --teal-soft: #eaf2f5;
+      --rose: #e7d4c5;
+      --gold: #d0af62;
+      --green-soft: #dfead9;
+      --shadow: 0 30px 60px rgba(41, 30, 23, 0.18);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 12%, rgba(160, 103, 60, 0.16), transparent 30%),
+        radial-gradient(circle at 80% 18%, rgba(55, 106, 124, 0.12), transparent 32%),
+        repeating-linear-gradient(90deg, rgba(91, 69, 47, 0.04), rgba(91,69,47,0.04) 1px, transparent 1px, transparent 12px),
+        linear-gradient(180deg, #d7c29d, #cfb58a);
+    }
+
+    body {
+      padding: 24px 18px 28px;
+    }
+
+    .frame {
+      width: min(1280px, 100%);
+      margin: 0 auto;
+      border: 6px solid #2c2823;
+      border-radius: 30px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 1.6fr 0.9fr 1fr;
+      align-items: center;
+      background: linear-gradient(90deg, #e9d9c7, #efdfd0);
+      border-bottom: 1px solid #d8c6af;
+      min-height: 56px;
+      padding: 0 18px;
+    }
+
+    .brand-left {
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.2px;
+      color: #3a312a;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .brand-center {
+      text-align: center;
+      font-size: 30px;
+      color: #2b687b;
+      font-family: Georgia, "Times New Roman", serif;
+      font-weight: 800;
+      letter-spacing: 0.15px;
+    }
+
+    .brand-center small {
+      font-family: "Segoe UI", sans-serif;
+      font-size: 14px;
+      color: #5f7380;
+      margin-left: 6px;
+      font-weight: 800;
+    }
+
+    .brand-right {
+      justify-self: end;
+      background: #f7efe3;
+      border: 1px solid #d5c1aa;
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: 12px;
+      font-weight: 800;
+      color: #433c34;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .brand-right .dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #d1a67d, #8c664f);
+      border: 2px solid #f5efe9;
+      display: inline-block;
+    }
+
+    .content {
+      display: grid;
+      grid-template-columns: 56px 1.6fr 1.1fr 0.92fr;
+      gap: 10px;
+      padding: 10px;
+      background: rgba(255,255,255,0.08);
+    }
+
+    .rail {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid #d7cab6;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 7px;
+    }
+
+    .rail .icon {
+      width: 30px;
+      height: 30px;
+      border: 1px solid #d8c7b5;
+      border-radius: 8px;
+      background: #fff;
+      display: grid;
+      place-items: center;
+      font-size: 16px;
+      color: #6b5f54;
+      font-weight: 700;
+    }
+
+    .rail .icon.active {
+      border-color: #c7b79d;
+      background: #fff7ef;
+    }
+
+    .workspace {
+      background: rgba(255,255,255,0.18);
+      border: 1px solid #d7cab6;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .workspace-head {
+      background: #f8efe4;
+      border-bottom: 1px solid #d9c8b3;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.25px;
+      text-transform: uppercase;
+      color: #4d433b;
+    }
+
+    .workspace-body {
+      padding: 10px 10px 0;
+    }
+
+    .project-name {
+      margin: 0 0 8px;
+      font-size: 27px;
+      line-height: 1.05;
+      text-transform: uppercase;
+      letter-spacing: 0.15px;
+      font-weight: 900;
+      color: #1d1a17;
+    }
+
+    .plan {
+      position: relative;
+      height: 520px;
+      border: 1px solid #d0bb97;
+      border-radius: 10px;
+      background:
+        linear-gradient(90deg, rgba(118,100,84,0.07) 1px, transparent 1px) 0 0 / 24px 24px,
+        linear-gradient(rgba(118,100,84,0.07) 1px, transparent 1px) 0 0 / 24px 24px,
+        #fffdf9;
+      overflow: hidden;
+    }
+
+    .plan .outline {
+      position: absolute;
+      left: 28px;
+      right: 26px;
+      top: 20px;
+      bottom: 52px;
+      border: 3px solid #2b2724;
+      background: rgba(255,255,255,0.02);
+    }
+
+    .plan .room {
+      position: absolute;
+      border: 2px solid #2a2825;
+      background: rgba(0,0,0,0.02);
+    }
+
+    .plan .r1 { left: 42px; top: 42px; width: 170px; height: 90px; }
+    .plan .r2 { left: 220px; top: 42px; width: 150px; height: 90px; }
+    .plan .r3 { left: 42px; top: 136px; width: 190px; height: 110px; }
+    .plan .r4 { left: 238px; top: 136px; width: 130px; height: 110px; }
+    .plan .r5 { left: 38px; top: 272px; width: 290px; height: 88px; }
+
+    .plan .dot {
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #edf5fa;
+      border: 1px solid #80a5b4;
+      color: #1c5d73;
+      font-size: 11px;
+      font-weight: 800;
+      display: grid;
+      place-items: center;
+    }
+
+    .plan .d1 { left: 312px; top: 52px; }
+    .plan .d2 { left: 324px; top: 152px; }
+    .plan .d3 { left: 290px; top: 318px; }
+    .plan .d4 { left: 38px; top: 350px; }
+
+    .plan .bubble {
+      position: absolute;
+      right: 18px;
+      top: 18px;
+      width: 175px;
+      border: 1px solid #c7ac8b;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.88);
+      padding: 6px 7px;
+      box-shadow: 0 8px 16px rgba(42,32,24,0.08);
+    }
+
+    .plan .bubble .head {
+      margin: -6px -7px 6px;
+      background: #8a7280;
+      color: #fff;
+      border-radius: 8px 8px 0 0;
+      padding: 5px 7px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.25px;
+      text-transform: uppercase;
+    }
+
+    .plan .bubble .copy {
+      font-size: 11px;
+      color: #5e5349;
+      line-height: 1.35;
+    }
+
+    .center-panel {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid #d9cab6;
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .agent-head {
+      border-bottom: 1px solid #d9c6ae;
+      background: #f8efe5;
+      padding: 8px 10px;
+      font-size: 11px;
+      letter-spacing: 0.25px;
+      font-weight: 900;
+      text-transform: uppercase;
+      color: #4d423a;
+    }
+
+    .agent-portrait {
+      position: relative;
+      height: 184px;
+      border-bottom: 1px solid #dcc7ae;
+      background: linear-gradient(135deg, #fffdf9, #f0e7dc);
+      overflow: hidden;
+    }
+
+    .agent-portrait .bg {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 68% 22%, rgba(183, 145, 100, 0.22), transparent 20%),
+        radial-gradient(circle at 74% 72%, rgba(128, 171, 122, 0.28), transparent 28%);
+    }
+
+    .agent-portrait .hair {
+      position: absolute;
+      left: 50%;
+      top: 34%;
+      transform: translate(-50%, -50%);
+      width: 126px;
+      height: 90px;
+      border-radius: 55% 45% 48% 52% / 58% 45% 55% 42%;
+      background: #644a39;
+      z-index: 2;
+    }
+
+    .agent-portrait .face {
+      position: absolute;
+      left: 50%;
+      top: 46%;
+      transform: translate(-50%, -50%);
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      background: linear-gradient(145deg, #f2d5b4, #d49c75);
+      box-shadow: inset -10px -8px 0 rgba(119, 89, 66, 0.08);
+      z-index: 3;
+    }
+
+    .agent-portrait .body {
+      position: absolute;
+      left: 50%;
+      bottom: 0;
+      transform: translateX(-50%);
+      width: 150px;
+      height: 90px;
+      border-radius: 18px 18px 0 0;
+      background: linear-gradient(180deg, #d7dde2, #b9c4d0);
+      border: 1px solid rgba(84,86,92,0.15);
+      z-index: 1;
+    }
+
+    .agent-portrait .leaf {
+      position: absolute;
+      right: 30px;
+      bottom: 18px;
+      width: 44px;
+      height: 62px;
+      background: linear-gradient(180deg, #8ebd8d, #528a60);
+      border-radius: 60% 40% 52% 48% / 62% 42% 58% 38%;
+      transform: rotate(-16deg);
+    }
+
+    .agent-portrait .leaf.two {
+      right: 50px;
+      bottom: 26px;
+      transform: rotate(18deg) scale(0.9);
+    }
+
+    .agent-portrait .name {
+      position: absolute;
+      left: 50%;
+      bottom: 8px;
+      transform: translateX(-50%);
+      font-size: 18px;
+      color: #3b312a;
+      font-weight: 800;
+      white-space: nowrap;
+      z-index: 5;
+    }
+
+    .agent-copy {
+      padding: 10px 12px 8px;
+      background: #fffdf9;
+      min-height: 170px;
+      font-size: 18px;
+      line-height: 1.32;
+      color: #1f1a17;
+      font-weight: 800;
+    }
+
+    .agent-copy .source {
+      display: block;
+      font-size: 14px;
+      color: #296b7d;
+      font-weight: 800;
+      margin-top: 10px;
+    }
+
+    .composer {
+      margin: 0 12px 12px;
+      border: 1px solid #d9cab8;
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: #fffdfb;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .composer input {
+      flex: 1;
+      border: none;
+      background: transparent;
+      font-size: 13px;
+      color: #6d625b;
+      outline: none;
+    }
+
+    .composer button {
+      border: none;
+      border-radius: 8px;
+      background: #286f81;
+      color: white;
+      font-size: 12px;
+      font-weight: 800;
+      padding: 9px 13px;
+    }
+
+    .tools-panel {
+      border: 1px solid #d9cab6;
+      border-radius: 12px;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      background: rgba(255,255,255,0.2);
+    }
+
+    .tools-head {
+      background: #f8efe4;
+      border-bottom: 1px solid #dcc7af;
+      padding: 8px 10px;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.25px;
+      text-transform: uppercase;
+      color: #4f433b;
+    }
+
+    .resource-list {
+      padding: 8px;
+      background: #fffdf9;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+
+    .resource {
+      border: 1px solid #d7c9b4;
+      border-radius: 8px;
+      background: #f9f1ea;
+      min-height: 90px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .resource .label {
+      font-size: 11px;
+      line-height: 1.25;
+      font-weight: 800;
+      letter-spacing: 0.08px;
+      text-transform: uppercase;
+      color: #383029;
+    }
+
+    .resource .meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10px;
+      font-weight: 800;
+      color: #6a5f56;
+    }
+
+    .resource .meta .tick {
+      width: 16px;
+      height: 16px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: #dfece0;
+      color: #2d6c52;
+      border: 1px solid #9fc4a2;
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .bottom {
+      display: grid;
+      grid-template-columns: 0.88fr 1.2fr 0.8fr 0.9fr;
+      gap: 8px;
+      padding: 8px 10px 12px;
+      background: rgba(255,255,255,0.08);
+      border-top: 1px solid #d7c7b2;
+    }
+
+    .bottom-card {
+      border: 1px solid #d5c4ab;
+      background: #fff;
+      border-radius: 10px;
+      padding: 8px;
+      min-height: 90px;
+    }
+
+    .bottom-card .title {
+      margin: 0 0 8px;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.2px;
+      text-transform: uppercase;
+      color: #574d43;
+    }
+
+    .score {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 18px;
+      font-weight: 800;
+      color: #2d6d7a;
+      margin-top: 6px;
+    }
+
+    .score-ring {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      border: 6px solid #d8ba63;
+      border-right-color: #d8cfbf;
+    }
+
+    .tips {
+      margin: 0;
+      padding-left: 18px;
+      font-size: 12px;
+      line-height: 1.45;
+      color: #443d36;
+    }
+
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      justify-content: center;
+    }
+
+    .actions button {
+      border: none;
+      border-radius: 8px;
+      background: #edddc0;
+      color: #2c2219;
+      border: 1px solid #d8c3ad;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 8px 10px;
+    }
+
+    .actions button.primary {
+      background: linear-gradient(120deg, #d3b869, #c2a250);
+      border-color: transparent;
+    }
+
+    .mini {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .mini .tool {
+      text-align: center;
+      border: 1px solid #d8cab6;
+      border-radius: 8px;
+      background: #fff;
+      padding: 8px 4px;
+      font-size: 10px;
+      font-weight: 800;
+      color: #493e35;
+    }
+
+    @media (max-width: 1100px) {
+      .content { grid-template-columns: 50px 1fr; }
+      .center-panel, .tools-panel { grid-column: 2; }
+      .bottom { grid-template-columns: 1fr 1fr; }
+    }
+
+    /* Reference-photo composition: tabletop, tablet and dense three-column studio. */
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body { padding: 0; background: #d6c09a; }
+    .scene {
+      position: relative; width: min(100vw, 1408px); height: min(100vh, 768px);
+      min-height: 500px; aspect-ratio: 1408 / 768; margin: 0 auto; overflow: hidden;
+      background: repeating-linear-gradient(2deg, transparent 0 8px, rgba(116,78,43,.08) 9px, transparent 11px 20px),
+        repeating-linear-gradient(91deg, rgba(132,94,57,.045) 0 1px, transparent 1px 170px),
+        linear-gradient(115deg, #e1cca6, #d5bc91 48%, #e4cda6);
+      color: #28241f;
+    }
+    .desk-prop { position:absolute; z-index:0; pointer-events:none; }
+    .plant { top:-28px; width:145px; height:145px; border-radius:50%; background:#ddd3c1; border:9px solid #f4eee2; box-shadow:0 8px 14px #765c3d55; }
+    .plant:before { content:""; position:absolute; inset:13px; border-radius:50%; background:radial-gradient(ellipse at center,#77765a 0 38%,#4e5945 41%,#706e56 70%); }
+    .plant i { position:absolute; left:50%; top:48%; width:28px; height:61px; border-radius:80% 12% 75% 12%; transform-origin:4px 45px; background:linear-gradient(120deg,#8da17a,#52654a); box-shadow:inset 2px 0 #bdc59b; }
+    .plant i:nth-child(1){transform:rotate(-72deg)} .plant i:nth-child(2){transform:rotate(-32deg)} .plant i:nth-child(3){transform:rotate(8deg)} .plant i:nth-child(4){transform:rotate(48deg)} .plant i:nth-child(5){transform:rotate(88deg)} .plant i:nth-child(6){transform:rotate(128deg)} .plant i:nth-child(7){transform:rotate(168deg)}
+    .plant.left { left:-18px; } .plant.right { right:-18px; }
+    .ruler { left:2.1%; top:22%; width:24px; height:220px; transform:rotate(39deg); background:repeating-linear-gradient(0deg,#806747 0 1px,transparent 1px 10px),#d9bd8a; border:2px solid #a98a5f; box-shadow:2px 5px 8px #61452f55; }
+    .pencil { left:5.8%; top:32%; width:13px; height:190px; border-radius:8px; transform:rotate(39deg); background:linear-gradient(90deg,#8c542b,#d09b5e 35%,#d9b675 70%,#74452b); box-shadow:2px 4px 5px #61452f55; }
+    .cup { right:-17px; top:42%; width:155px; height:155px; border-radius:50%; background:radial-gradient(circle,#c6a783 0 43%,#eee4d5 46% 57%,#ab8160 60% 64%,#e8ddca 67%); box-shadow:0 8px 15px #634b3555; }
+    .cup:after { content:""; position:absolute; right:78%; top:25%; width:75px; height:75px; border:13px solid #e9dfcf; border-radius:50%; z-index:-1; }
+    .notebook { left:-12px; bottom:-61px; width:190px; height:205px; transform:rotate(-13deg); background:#f4eddf; border:1px solid #c6b69d; box-shadow:5px 7px 12px #5f493344; }
+    .notebook:before { content:""; position:absolute; left:18px; right:10px; top:12px; bottom:12px; background:repeating-linear-gradient(0deg,transparent 0 20px,#c7d1d0 21px); }
+    .notebook:after { content:"⌁  ╱╲  ⌁\A    ╱  ╲\A  ╱____╲"; white-space:pre; position:absolute; left:25px; top:40px; color:#56534d; font:24px/1.1 Georgia; transform:rotate(-4deg); }
+    .paper-stack { right:1%; bottom:-42px; width:190px; height:145px; transform:rotate(10deg); background:linear-gradient(90deg,#eee9db 0 34%,#d6d8cf 34% 66%,#b9c8c5 66%); border:1px solid #d0c5b2; box-shadow:0 5px 10px #57412c44; }
+    .under-plan { left:24%; bottom:-52px; width:38%; height:135px; transform:rotate(-7deg); opacity:.65; background:repeating-linear-gradient(0deg,transparent 0 17px,#847d70 18px,#eee8d8 19px 24px); border:1px solid #b7aa93; }
+    .device { position:absolute; z-index:2; left:12.1%; top:7.6%; width:76%; height:84%; border:6px solid #292724; border-radius:27px; overflow:hidden; background:#f0e2d5; box-shadow:0 16px 20px #38291f66,0 2px 3px #fff9 inset; display:grid; grid-template-rows:8.6% 74.5% 16.9%; }
+    .appbar { display:grid; grid-template-columns:1.65fr .72fr 1.15fr; align-items:center; padding:0 13px; background:linear-gradient(90deg,#e9d2c5,#efdbce); border-bottom:1px solid #d7c2ae; min-height:0; }
+    .app-brand { font-size:clamp(8px,.92vw,14px); font-weight:900; text-transform:uppercase; white-space:nowrap; letter-spacing:.1px; }
+    .app-brand:before { content:"⌂"; display:inline-grid; place-items:center; width:23px; height:23px; border:1.5px solid #54615c; margin-right:8px; font-size:16px; }
+    .app-name { justify-self:center; color:#557879; font:bold clamp(15px,1.7vw,24px) Georgia,serif; white-space:nowrap; }
+    .app-name small { color:#3b4e4d; font:600 clamp(9px,.9vw,13px) "Segoe UI",sans-serif; }
+    .student { justify-self:end; font-size:clamp(8px,.9vw,13px); white-space:nowrap; display:flex; align-items:center; gap:7px; }
+    .student b { font-weight:900; } .student .avatar { width:25px; height:25px; border-radius:50%; border:2px solid #f7eee5; background:radial-gradient(circle at 51% 40%,#e9bd91 0 24%,transparent 25%),radial-gradient(ellipse at 50% 93%,#3c5662 0 38%,transparent 40%),radial-gradient(circle at 50% 30%,#59453b 0 38%,#bb8e70 39%); }
+    .screen { display:grid; grid-template-columns:36px minmax(0,2.06fr) minmax(0,1.06fr) minmax(0,.56fr); gap:8px; padding:7px 8px 5px; min-height:0; }
+    .navrail { background:#efdfd1; border-left:3px solid #6d8981; display:flex; flex-direction:column; align-items:center; gap:9px; padding:9px 2px; color:#514a43; }
+    .navicon { width:27px; height:27px; display:grid; place-items:center; border-radius:5px; border:1px solid #c8b8a5; background:#f8eee4; font-size:16px; line-height:1; }
+    .studio { min-width:0; display:grid; grid-template-rows:25px 31px minmax(0,1fr); background:#f4eadf; }
+    .studio-tab { padding:5px 9px; background:#ebd8ca; font-size:clamp(8px,.88vw,12px); font-weight:900; text-transform:uppercase; white-space:nowrap; }
+    .project-title { display:flex; align-items:center; margin:0; padding:0 7px; font-size:clamp(10px,1.18vw,16px); text-transform:uppercase; font-weight:900; white-space:nowrap; overflow:hidden; }
+    .drawing-board { position:relative; min-height:0; overflow:hidden; border:1px solid #d6c4ad; border-radius:7px; background:#fffaf1; }
+    .floorplan { position:absolute; inset:4% 3% 5%; width:94%; height:91%; }
+    .critique { position:absolute; z-index:1; width:33%; background:#fffefa; border:1px solid #b9a898; border-radius:7px; overflow:hidden; box-shadow:0 3px 9px #49382733; }
+    .critique.one { top:3%; right:2%; height:37%; } .critique.two { bottom:2%; right:11%; width:35%; height:38%; }
+    .critique-head { height:20px; background:#887582; color:#fff; padding:4px 7px; font-size:clamp(7px,.72vw,10px); font-weight:900; text-transform:uppercase; letter-spacing:.1px; }
+    .critique svg { width:100%; height:calc(100% - 20px); display:block; }
+    .professor { min-width:0; background:#fffaf3; display:grid; grid-template-rows:minmax(0,1.42fr) minmax(0,1.22fr) 68px; border-radius:2px; overflow:hidden; }
+    .portrait { position:relative; overflow:hidden; background:#faf5ea; }
+    .portrait-art { display:block; width:100%; height:100%; object-fit:contain; }
+    .prof-name { text-align:center; display:grid; place-items:center; border-bottom:2px solid #2d2925; font-size:clamp(10px,1.12vw,16px); font-weight:900; text-transform:uppercase; white-space:nowrap; }
+    .prof-message { padding:9px 10px 3px; font-size:clamp(8px,.95vw,13px); line-height:1.28; background:#fffaf3; overflow:hidden; }
+    .prof-message a { display:block; margin-top:7px; color:#2d3430; text-decoration:none; border-bottom:1px dotted #776b60; width:max-content; max-width:100%; }
+    .answer { margin:3px 9px 8px; border:1px solid #d5c8b9; border-radius:7px; padding:7px 9px; background:white; color:#8c857b; font-size:11px; position:relative; }
+    .answer:after { content:"◢"; position:absolute; right:7px; bottom:5px; color:#9b9389; font-size:10px; }
+    .resources { min-width:0; border-left:1px solid #d6c6b4; background:#f8efe5; display:flex; flex-direction:column; }
+    .resources-title { padding:5px 6px 7px; font-size:clamp(8px,.88vw,12px); line-height:1.08; font-weight:900; text-transform:uppercase; }
+    .resource-card { position:relative; background:#fffaf2; border:1px solid #d8cbbb; border-radius:6px; margin:0 5px 6px; min-height:0; flex:1; padding:7px 5px 5px 37px; font-size:clamp(7px,.8vw,11px); line-height:1.08; text-transform:uppercase; font-weight:900; }
+    .resource-card:before { content:"▤"; position:absolute; left:7px; top:9px; width:22px; height:21px; display:grid; place-items:center; color:#825f4e; background:#d8aaa3; border:1px solid #b68e82; border-radius:3px; font-size:17px; }
+    .resource-card:nth-of-type(3):before { background:#ddb88d; } .resource-card:nth-of-type(4):before { background:#d4bc73; } .resource-card:nth-of-type(5):before { background:#d6a4a2; }
+    .resource-card span { position:absolute; bottom:6px; left:37px; font-weight:500; font-size:clamp(7px,.8vw,11px); text-transform:none; }
+    .resource-card span:after { content:"✓"; position:absolute; left:69px; font-size:16px; color:#557b70; bottom:-2px; }
+    .scroll-track { margin:0 4px 5px auto; width:4px; height:33px; background:#d0c3b2; border-radius:4px; }
+    .bottom-bar { display:grid; grid-template-columns:.82fr 2.42fr 1fr; gap:7px; padding:5px 8px 8px; border-top:1px solid #d9c9b7; background:#efdfd2; min-height:0; }
+    .bottom-card { position:relative; background:#f8eee4; border-radius:7px; min-width:0; overflow:hidden; }
+    .bottom-title { margin:0; background:#e9d4c5; padding:4px 8px; font-size:clamp(8px,.88vw,12px); font-weight:900; text-transform:uppercase; white-space:nowrap; }
+    .dashboard-content { height:calc(100% - 22px); display:flex; align-items:center; justify-content:space-evenly; }
+    .report-icon { width:44px; height:46px; display:grid; place-items:center; font-size:29px; background:#efe0d1; border:1px solid #d8c6b2; border-radius:6px; }
+    .gauge { width:80px; height:45px; position:relative; overflow:hidden; }
+    .gauge:before { content:""; position:absolute; width:66px; height:66px; left:7px; top:7px; border-radius:50%; background:conic-gradient(from 270deg,#74a97b 0 38%,#cfb24c 38% 72%,#ded7c7 72% 100%); }
+    .gauge:after { content:""; position:absolute; width:46px; height:46px; left:17px; top:17px; border-radius:50%; background:#f8eee4; }
+    .gauge b { position:absolute; z-index:1; bottom:0; left:25px; font-size:15px; }
+    .feedback-content { display:grid; grid-template-columns:1fr 165px; align-items:center; height:calc(100% - 22px); gap:6px; padding:3px 8px; }
+    .feedback-list { margin:0; padding:0; list-style:none; font-size:clamp(7px,.77vw,11px); line-height:1.55; font-weight:700; white-space:nowrap; }
+    .feedback-list li:before { content:"■"; color:#c8795e; margin-right:5px; } .feedback-list li:nth-child(2):before { color:#a7ad55; } .feedback-list li:nth-child(3):before { color:#719b70; }
+    .button-stack { display:grid; gap:4px; } .button-stack button { border:1px solid #d0bba4; border-radius:6px; height:23px; background:#ead8cc; font-size:clamp(7px,.78vw,11px); font-weight:900; text-transform:uppercase; } .button-stack button:last-child { background:linear-gradient(#ddc673,#c6a649); }
+    .quick-links { display:grid; grid-template-columns:repeat(4,1fr); height:calc(100% - 22px); align-items:center; }
+    .quick-link { text-align:center; font-size:clamp(6px,.69vw,10px); text-transform:uppercase; white-space:nowrap; } .quick-link b { display:block; font-size:22px; line-height:1.05; font-weight:400; }
+    .scene:after { content:""; position:absolute; z-index:1; left:12.1%; top:7.6%; width:76%; height:84%; border-radius:27px; pointer-events:none; box-shadow:0 0 0 1px #ffffff30 inset; }
+    @media(max-width:800px) { .device { left:3%; width:94%; } .screen { grid-template-columns:29px minmax(0,2fr) minmax(0,1fr) minmax(0,.56fr); gap:5px; padding:5px; } .navicon { width:23px; height:23px; } .critique-head { height:16px; padding:3px 4px; } .professor { grid-template-rows:minmax(0,1.05fr) 18px minmax(0,1.3fr) 48px; } .feedback-content { grid-template-columns:1fr 100px; } .report-icon { width:32px; height:34px; font-size:22px; } }
+
+    /* Preview the product UI only; the wooden desk and tablet are presentation props. */
+    body { background: #f0e2d5; }
+    .scene { background: #f0e2d5; }
+    .desk-prop { display: none; }
+    .device { left: 0; top: 0; width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; }
+    .scene:after { display: none; }
+    .student, .navicon, .studio-tab, .resource-card, .quick-link, .answer button { font-family: inherit; cursor: pointer; }
+    .student { border: 0; border-radius: 999px; padding: 7px 12px; background: #f7efe3; color: #433c34; }
+    .student:hover { background: #fff8ef; }
+    .navicon { padding: 0; color: inherit; }
+    .navicon.active { background: #d9e4de; border-color: #799487; color: #36594c; box-shadow: inset 3px 0 #587f6d; }
+    .navicon:hover, .quick-link:hover, .resource-card:hover { filter: brightness(.97); transform: translateY(-1px); }
+    .studio-tab { width: 100%; border: 0; text-align: left; color: inherit; cursor: pointer; }
+    .studio-tab span { float: right; }
+    .critique-head { position: relative; padding-right: 25px; }
+    .close-note { position: absolute; top: 1px; right: 4px; border: 0; padding: 0 3px; background: transparent; color: white; font-family: inherit; font-size: 16px; line-height: 18px; cursor: pointer; }
+    .critique.is-dismissed { display: none; }
+    .answer { display: flex; gap: 5px; align-items: stretch; min-height: 0; }
+    .answer:after { display: none; }
+    .answer textarea { flex: 1; width: 0; resize: none; border: 0; outline: 0; background: transparent; color: #514a43; font-family: inherit; font-size: 11px; line-height: 1.35; }
+    .answer textarea::placeholder { color: #8c857b; }
+    .answer button { align-self: flex-end; width: 25px; height: 25px; border: 0; border-radius: 5px; background: #2b7182; color: white; font-size: 16px; }
+    .resource-card { width: calc(100% - 10px); text-align: left; color: inherit; font-family: inherit; cursor: pointer; }
+    .resource-card[aria-pressed="true"] { border-color: #548477; box-shadow: 0 0 0 2px #54847755; background: #f1f8f2; }
+    .quick-link { border: 0; padding: 4px 2px; background: transparent; color: inherit; font-family: inherit; cursor: pointer; }
+    button:focus-visible, a:focus-visible, .floorplan circle:focus-visible { outline: 2px solid #276f83; outline-offset: 2px; }
+    .demo-dialog { width: min(520px, calc(100vw - 32px)); max-height: min(78vh, 620px); border: 1px solid #d4c2ad; border-radius: 14px; padding: 0; background: #fffaf3; color: #2a271f; box-shadow: 0 22px 70px #241b1766; }
+    .demo-dialog::backdrop { background: #29231d66; backdrop-filter: blur(2px); }
+    .demo-dialog-header { display:flex; align-items:center; justify-content:space-between; padding:15px 18px; background:#efdfd2; border-bottom:1px solid #dbc7b2; }
+    .demo-dialog-header h2 { margin:0; font-size:17px; text-transform:uppercase; letter-spacing:.2px; }
+    .demo-dialog-close { width:30px; height:30px; border:1px solid #d4c1ad; border-radius:8px; background:#fffaf3; font-size:19px; cursor:pointer; color:#51483f; }
+    .demo-dialog-body { padding:17px 18px 18px; overflow:auto; font-size:14px; line-height:1.5; }
+    .demo-dialog-body p { margin:0 0 13px; color:#5b5248; }
+    .demo-list { display:grid; gap:8px; margin:0; padding:0; list-style:none; }
+    .demo-list li { padding:10px 12px; border:1px solid #e1d4c5; border-radius:9px; background:#fff; }
+    .demo-chip { display:inline-block; margin:0 5px 5px 0; padding:5px 9px; border-radius:999px; background:#e8f0eb; color:#426b5c; font-size:12px; font-weight:700; }
+    .demo-choices { display:flex; flex-wrap:wrap; gap:8px; margin-top:15px; }
+    .demo-choice { border:1px solid #cdb99f; border-radius:8px; padding:9px 12px; background:#f1e4d4; color:#302820; font-weight:700; cursor:pointer; }
+    .demo-choice.primary { border-color:#286d7d; background:#286d7d; color:white; }
+    .demo-switch { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border:1px solid #e1d4c5; border-radius:9px; background:white; }
+    .demo-switch input { width:18px; height:18px; accent-color:#387563; }
+    .demo-toast { position:fixed; z-index:10; left:50%; bottom:20px; transform:translate(-50%,12px); opacity:0; pointer-events:none; padding:10px 15px; border:1px solid #d4c4af; border-radius:999px; background:#292d29; color:white; box-shadow:0 8px 24px #241b1744; font-size:13px; transition:opacity .18s ease,transform .18s ease; }
+    .demo-toast.visible { transform:translate(-50%,0); opacity:1; }
+    @media(max-width:800px) { .demo-dialog-body { padding:14px; } .demo-dialog-header { padding:12px 14px; } }
+  </style>
+</head>
+<body>
+  <main class="scene">
+    <section class="device" aria-label="Interface ArchiProf">
+      <header class="appbar">
+        <div class="app-brand">Plateforme pédagogique d'architecture IA</div>
+        <div class="app-name">ArchiProf <small>v2.1</small></div>
+        <button class="student" type="button" data-demo-view="Profil"><span class="avatar"></span><b>ÉTUDIANT: JULES DUBRUN</b><span>⌄</span></button>
+      </header>
+
+      <section class="screen">
+        <nav class="navrail" aria-label="Navigation">
+          <button class="navicon active" type="button" data-demo-view="Messages" aria-label="Messages" title="Messages">☏</button>
+          <button class="navicon" type="button" data-demo-view="Fichiers" aria-label="Fichiers" title="Fichiers">▱</button>
+          <button class="navicon" type="button" data-demo-view="Outils" aria-label="Outils" title="Outils">⚒</button>
+          <button class="navicon" type="button" data-demo-view="Projets" aria-label="Projets" title="Projets">▤</button>
+          <button class="navicon" type="button" data-demo-view="Notes" aria-label="Notes" title="Notes">▧</button>
+          <button class="navicon" type="button" data-demo-view="Paramètres" aria-label="Paramètres" title="Paramètres">⚙</button>
+        </nav>
+
+        <section class="studio">
+          <button class="studio-tab" type="button" data-demo-view="Studio de projet">Studio de projet &amp; conception <span>⌄</span></button>
+          <h1 class="project-title">Projet: Logement "Les Toits Verts"</h1>
+          <div class="drawing-board">
+            <svg class="floorplan" viewBox="0 0 700 500" role="img" aria-label="Plan architectural annoté">
+              <defs>
+                <pattern id="paperGrid" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M8 0H0V8" fill="none" stroke="#ece5d9" stroke-width=".45"/></pattern>
+                <pattern id="tile" width="9" height="9" patternUnits="userSpaceOnUse"><path d="M9 0H0V9" fill="none" stroke="#d6cbb9" stroke-width=".5"/></pattern>
+              </defs>
+              <rect width="700" height="500" fill="url(#paperGrid)"/>
+              <g fill="none" stroke="#252522" stroke-width="5" stroke-linejoin="miter">
+                <path d="M87 62H590V400H82V196H87Z"/>
+                <path d="M218 65V177H87M365 64V182H218M492 64V177H365M87 177H492V278H590M218 177V278M365 177V278M87 278H492V400M218 278V400M365 278V400M492 177V400" stroke-width="3"/>
+                <path d="M84 196H143V278M143 196V235M143 235H218M218 235V278M365 182H414V235M414 235H492" stroke-width="2"/>
+              </g>
+              <g fill="url(#tile)" stroke="#777166" stroke-width="1">
+                <rect x="94" y="72" width="115" height="95"/><rect x="226" y="72" width="130" height="96"/>
+                <rect x="373" y="72" width="111" height="96"/><rect x="500" y="72" width="80" height="96"/>
+                <rect x="96" y="286" width="110" height="103"/><rect x="226" y="286" width="127" height="103"/>
+                <rect x="373" y="286" width="111" height="103"/><rect x="500" y="286" width="80" height="103"/>
+              </g>
+              <g fill="none" stroke="#716d62" stroke-width="1.4">
+                <path d="M108 89h34v27h-34zM151 89h42v27h-42zM245 93h40v35h-40zM302 91v37M390 91h74v31h-74zM514 93h50v33h-50z"/>
+                <path d="M110 307h74v63h-74zM241 301h43v65h-43zM299 300v66M390 303h75v58h-75zM512 303h54v58h-54z"/>
+                <path d="M143 196v33m0 0a33 33 0 0 1 33-33M218 177v36m0 0a36 36 0 0 0-36-36M365 182v34m0 0a34 34 0 0 1 34-34M492 177v37m0 0a37 37 0 0 0-37-37M218 278v35m0 0a35 35 0 0 0-35-35M365 278v34m0 0a34 34 0 0 1 34-34"/>
+                <path d="M236 198h132v61H236zM259 210h32v35h-32zM311 211h43v34h-43zM253 352h85M390 204h75" stroke-dasharray="3 2"/>
+              </g>
+              <g fill="#4d4942" font-family="Arial,sans-serif" font-size="9" text-anchor="middle">
+                <text x="150" y="151">CHAMBRE 01</text><text x="290" y="151">SÉJOUR</text><text x="425" y="151">CUISINE</text><text x="540" y="151">BUREAU</text>
+                <text x="148" y="379">CHAMBRE 02</text><text x="290" y="379">ENTRÉE</text><text x="427" y="379">SDB</text><text x="540" y="379">CELLIER</text>
+                <text x="300" y="234">CIRCULATION</text>
+              </g>
+              <g stroke="#557f9a" fill="none" stroke-width="1.5">
+                <path d="M86 48H590M86 42v12m132-12v12m147-12v12m127-12v12m98-12v12M75 62V400M68 62h14m-14 134h14m-14 82h14m-14 122h14"/>
+                <path d="M127 62v-20M300 62v-25M438 62v-20M294 400v32M455 400v33" stroke-dasharray="3 3"/>
+              </g>
+              <g fill="#3f7897" font-family="Arial,sans-serif" font-size="8" text-anchor="middle">
+                <text x="151" y="38">3.60</text><text x="291" y="34">4.20</text><text x="426" y="38">3.80</text><text x="540" y="38">2.70</text>
+              </g>
+              <g font-family="Arial,sans-serif" font-weight="bold" font-size="10" text-anchor="middle">
+                <g fill="#edf5f6" stroke="#4c8097"><circle cx="130" cy="27" r="12"/><circle cx="300" cy="22" r="12"/><circle cx="438" cy="27" r="12"/><circle cx="63" cy="187" r="12"/><circle cx="64" cy="284" r="12"/><circle cx="296" cy="442" r="12"/><circle cx="460" cy="442" r="12"/></g>
+                <g fill="#356b88" stroke="none"><text x="130" y="31">01</text><text x="300" y="26">02</text><text x="438" y="31">03</text><text x="63" y="191">04</text><text x="64" y="288">05</text><text x="296" y="446">06</text><text x="460" y="446">07</text></g>
+              </g>
+            </svg>
+
+            <div class="critique one">
+              <div class="critique-head">Rétroaction de l'agent <button class="close-note" type="button" aria-label="Masquer cette rétroaction">×</button></div>
+              <svg viewBox="0 0 250 155" aria-label="Perspective structurelle annotée">
+                <g fill="none" stroke="#68645d" stroke-width="1.4" stroke-linejoin="round">
+                  <path d="M31 78 103 37l103 36-72 43zM31 78v42l103 36v-40M134 116l72-43v40l-72 43M48 84v35m17-44v39m17-49v39m18-49v39m17-33v40m17-28v40m18-51v40m17-50v40m16-28v39"/>
+                  <path d="M39 91 134 126l95-54M49 65l103 36 71-40M31 99l103 36 72-42M103 37v43M72 54v42M166 56v41"/>
+                  <path d="M57 80 87 63l23 8-29 18zM122 100l29-18 24 8-29 18zM75 114l30-18 22 8-28 18z"/>
+                  <path d="M185 42h39m-39 0 14-8m-14 8 14 8M17 95h-9m9 0-5-5m5 5-5 5" stroke="#5d87a0"/>
+                </g>
+                <g fill="#55514b" font-family="Arial" font-size="7"><text x="164" y="32">Contreventement</text><text x="164" y="40">et stabilité</text><text x="8" y="108">Niveau 01</text><text x="144" y="151">Trame poteaux / poutres</text></g>
+              </svg>
+            </div>
+            <div class="critique two">
+              <div class="critique-head">Rétroaction de l'agent <button class="close-note" type="button" aria-label="Masquer cette rétroaction">×</button></div>
+              <svg viewBox="0 0 270 150" aria-label="Extrait de recommandations">
+                <rect width="270" height="150" fill="#fffefa"/>
+                <g fill="#615b53"><rect x="12" y="12" width="145" height="4"/><rect x="12" y="22" width="128" height="3"/><rect x="12" y="30" width="148" height="3"/><rect x="12" y="38" width="132" height="3"/><rect x="12" y="46" width="143" height="3"/><rect x="12" y="58" width="145" height="3"/><rect x="12" y="66" width="134" height="3"/><rect x="12" y="74" width="148" height="3"/><rect x="12" y="82" width="116" height="3"/><rect x="12" y="98" width="125" height="3"/><rect x="12" y="106" width="143" height="3"/><rect x="12" y="114" width="132" height="3"/><rect x="12" y="122" width="148" height="3"/><rect x="12" y="130" width="98" height="3"/></g>
+                <g fill="none" stroke="#79746b" stroke-width="1"><path d="M183 20h70v63h-70zM191 29h54v45h-54zM190 96h58v40h-58zM194 128l13-14 11 7 12-18 14 9"/><path d="M185 33l66 45M251 33l-66 45" stroke-dasharray="2 2"/></g>
+              </svg>
+            </div>
+
+            <svg style="position:absolute;left:2%;bottom:2%;width:26%;height:25%;z-index:2" viewBox="0 0 220 125" aria-label="Maquette du bâtiment">
+              <ellipse cx="112" cy="101" rx="98" ry="18" fill="#cbc6b8"/>
+              <path d="M24 87 102 43l91 32-79 44z" fill="#777d70" stroke="#5b6259"/>
+              <path d="M47 74 106 40l65 24-62 36z" fill="#d6d0bd" stroke="#59574d"/>
+              <path d="M51 72V39l56-32v34zM113 99V66l59-34v32z" fill="#d8d3c4" stroke="#60594f"/>
+              <path d="M51 39 107 7l66 25-60 34z" fill="#eee8d8" stroke="#58554c"/>
+              <g fill="#687a70" stroke="#4f625a" stroke-width="1"><path d="M57 41 70 34v13l-13 8zM77 30l13-7v13l-13 8zM96 19l7-4v13l-7 5zM119 68l13-8v13l-13 8zM139 57l13-8v13l-13 8zM158 46l8-5v13l-8 5z"/></g>
+              <g stroke="#748b70" stroke-width="3"><path d="M32 80v-15m-6 7 6-9 7 5M183 71V56m-7 7 7-9 7 5M94 106V91m-7 7 7-9 7 5"/></g>
+            </svg>
+          </div>
+        </section>
+
+        <section class="professor">
+          <div class="portrait">
+            <img class="portrait-art" src="image.png" alt="Archi-Professor (IA)" />
+          </div>
+          <div class="prof-message">Jules, ton plan est superbe ! J'aime beaucoup la circulation. Cependant, pour la zone C, une portée de 12 mètres semble importante. Réfléchis aux options de structure bois ou acier, comme dans ton cours de Structures II.<a href="#" data-demo-view="Source du cours">↗ (Lien: Cours Structures II - Section 4.2)</a></div>
+          <form class="answer" data-demo-form>
+            <textarea aria-label="Votre réponse" placeholder="TA RÉPONSE..." rows="2"></textarea>
+            <button type="submit" aria-label="Envoyer la réponse">↗</button>
+          </form>
+        </section>
+
+        <aside class="resources">
+          <div class="resources-title">Ressources et références (RAG)</div>
+          <button class="resource-card" type="button" aria-pressed="false">Règlements d'urbanisme (PLU Paris)<span>Indexé</span></button>
+          <button class="resource-card" type="button" aria-pressed="false">Normes PMR &amp; accessibilité<span>Indexé</span></button>
+          <button class="resource-card" type="button" aria-pressed="false">Guides de structure bois/acier<span>Indexé</span></button>
+          <button class="resource-card" type="button" aria-pressed="false">Histoire &amp; inspiration<span>Indexé</span></button>
+          <div class="scroll-track"></div>
+        </aside>
+      </section>
+
+      <footer class="bottom-bar">
+        <section class="bottom-card">
+          <h2 class="bottom-title">Tableau de bord de l'agent</h2>
+          <div class="dashboard-content"><div class="report-icon">▤⌕</div><div class="gauge"><b>7/10</b></div></div>
+        </section>
+        <section class="bottom-card">
+          <h2 class="bottom-title">Critiques et conseils</h2>
+          <div class="feedback-content">
+            <ul class="feedback-list"><li>STRUCTURE (Vérifier Portées Zone C)</li><li>ÉCLAIRAGE NATUREL (Optimisation Sud)</li><li>MATÉRIAUX (Options Durables)</li></ul>
+            <div class="button-stack"><button type="button" data-demo-action="analyser">Analyser</button><button type="button" data-demo-action="options">Générer options</button></div>
+          </div>
+        </section>
+        <section class="bottom-card">
+          <h2 class="bottom-title">•••</h2>
+          <div class="quick-links"><button class="quick-link" type="button" data-demo-view="Messages"><b>✉</b>Messages</button><button class="quick-link" type="button" data-demo-view="Fichiers"><b>▱</b>Fichiers</button><button class="quick-link" type="button" data-demo-view="Paramètres"><b>⚙</b>Paramètres</button><button class="quick-link" type="button" data-demo-view="Aide"><b>ⓘ</b>Aide</button></div>
+        </section>
+      </footer>
+    </section>
+  </main>
+  <dialog class="demo-dialog" id="demoDialog" aria-labelledby="demoDialogTitle"></dialog>
+  <div class="demo-toast" id="demoToast" role="status" aria-live="polite"></div>
+  <script>
+    (() => {
+      const dialog = document.querySelector("#demoDialog");
+      const toast = document.querySelector("#demoToast");
+      let toastTimer;
+
+      const demoViews = {
+        "Messages": {
+          intro: "Aperçu local de la discussion du projet. Rien n’est envoyé ni enregistré.",
+          rows: ["Archi-professeur · Le plan est bien organisé. Vérifie la portée de la zone C.", "Vous · Je vais comparer les variantes bois et acier."]
+        },
+        "Fichiers": {
+          intro: "Documents fictifs associés à ce projet de démonstration.",
+          rows: ["Plan_RDC_v04.pdf · Plan architectural", "Maquette_toits_verts.glb · Modèle 3D", "Notes_structures_II.pdf · Extrait de cours"]
+        },
+        "Outils": {
+          intro: "Choisis un outil pour explorer le plan. Les outils sont simulés pour cette maquette.",
+          rows: ["Sélectionner un espace", "Mesurer une portée", "Ajouter une annotation", "Comparer deux variantes"]
+        },
+        "Projets": {
+          intro: "Projets d’exemple disponibles dans le prototype.",
+          rows: ["Logement — Les Toits Verts · Ouvert", "Pavillon des étudiants · Brouillon", "Maison de quartier · Archivé"]
+        },
+        "Notes": {
+          intro: "Notes locales de la séance de conception.",
+          rows: ["À vérifier : portée structurelle de la zone C", "Piste : améliorer l’éclairage naturel au sud", "À comparer : bois lamellé-collé / acier"]
+        },
+        "Paramètres": {
+          intro: "Préférences de démonstration, appliquées uniquement à cet écran.",
+          rows: ["Afficher les repères du plan", "Notifications de l’agent", "Mode de contraste renforcé"],
+          switches: true
+        },
+        "Aide": {
+          intro: "Quelques gestes pour parcourir le prototype.",
+          rows: ["Clique les icônes à gauche pour ouvrir les vues.", "Clique une ressource pour la sélectionner.", "Les boutons Analyser et Générer options affichent des résultats fictifs.", "Échap ou × ferme cette fenêtre."]
+        },
+        "Profil": {
+          intro: "Session de démonstration — Jules Dubrun.",
+          rows: ["Espace étudiant", "Préférences du compte", "Déconnexion (simulation)"]
+        },
+        "Studio de projet": {
+          intro: "Espace de travail actif : Logement « Les Toits Verts ».",
+          rows: ["Plan annoté", "Retours de l’agent", "Ressources de référence"]
+        },
+        "Source du cours": {
+          intro: "Référence d’exemple, sans document externe connecté.",
+          rows: ["Structures II · Section 4.2", "Thème : portée, choix du matériau et principe de stabilité", "Source affichée à titre de démonstration"]
+        }
+      };
+
+      function notify(message) {
+        toast.textContent = message;
+        toast.classList.add("visible");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove("visible"), 2500);
+      }
+
+      function openView(title, content = demoViews[title]) {
+        const view = content || { intro: "Détail de démonstration — aucune donnée réelle n’est chargée.", rows: [] };
+        const header = document.createElement("header");
+        header.className = "demo-dialog-header";
+        const heading = document.createElement("h2");
+        heading.id = "demoDialogTitle";
+        heading.textContent = title;
+        const close = document.createElement("button");
+        close.className = "demo-dialog-close";
+        close.type = "button";
+        close.setAttribute("aria-label", "Fermer");
+        close.textContent = "×";
+        close.addEventListener("click", () => dialog.close());
+        header.append(heading, close);
+
+        const body = document.createElement("div");
+        body.className = "demo-dialog-body";
+        const intro = document.createElement("p");
+        intro.textContent = view.intro;
+        body.append(intro);
+
+        if (view.switches) {
+          view.rows.forEach((label, index) => {
+            const row = document.createElement("label");
+            row.className = "demo-switch";
+            const text = document.createElement("span");
+            text.textContent = label;
+            const toggle = document.createElement("input");
+            toggle.type = "checkbox";
+            toggle.checked = index < 2;
+            toggle.addEventListener("change", () => notify("Préférence modifiée pour cette démonstration"));
+            row.append(text, toggle);
+            body.append(row);
+          });
+        } else if (view.rows.length) {
+          const list = document.createElement("ul");
+          list.className = "demo-list";
+          view.rows.forEach((rowText) => {
+            const row = document.createElement("li");
+            row.textContent = rowText;
+            list.append(row);
+          });
+          body.append(list);
+        }
+
+        if (view.choices?.length) {
+          const choices = document.createElement("div");
+          choices.className = "demo-choices";
+          view.choices.forEach((choice, index) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = `demo-choice${index === 0 ? " primary" : ""}`;
+            button.textContent = choice;
+            button.addEventListener("click", () => {
+              dialog.close();
+              notify(`${choice} · action simulée`);
+            });
+            choices.append(button);
+          });
+          body.append(choices);
+        }
+
+        dialog.replaceChildren(header, body);
+        if (!dialog.open) dialog.showModal();
+      }
+
+      document.addEventListener("click", (event) => {
+        const viewControl = event.target.closest("[data-demo-view]");
+        if (viewControl) {
+          event.preventDefault();
+          const viewName = viewControl.dataset.demoView;
+          document.querySelectorAll(".navicon").forEach((item) => item.classList.toggle("active", item === viewControl));
+          openView(viewName);
+          return;
+        }
+
+        const action = event.target.closest("[data-demo-action]");
+        if (action?.dataset.demoAction === "analyser") {
+          document.querySelectorAll(".critique").forEach((note) => note.classList.remove("is-dismissed"));
+          openView("Analyse du projet", {
+            intro: "Analyse fictive terminée. Ce résultat est fourni uniquement pour rendre la maquette interactive.",
+            rows: ["Structure · À vérifier — portée importante en zone C", "Éclairage naturel · Piste d’amélioration côté sud", "Matériaux · Comparer une option bois et une option acier"],
+            choices: ["Voir les points sur le plan", "Terminer"]
+          });
+        } else if (action?.dataset.demoAction === "options") {
+          openView("Variantes de conception", {
+            intro: "Deux pistes de travail fictives générées pour le projet.",
+            rows: ["Variante A · Trame bois, portée réduite et structure apparente", "Variante B · Poutres acier, plateau plus ouvert"],
+            choices: ["Comparer les variantes", "Garder le plan actuel"]
+          });
+        }
+
+        const noteClose = event.target.closest(".close-note");
+        if (noteClose) {
+          noteClose.closest(".critique").classList.add("is-dismissed");
+          notify("Rétroaction masquée · cliquez sur Analyser pour la revoir");
+          return;
+        }
+
+        const resource = event.target.closest(".resource-card");
+        if (resource) {
+          const selected = resource.getAttribute("aria-pressed") !== "true";
+          resource.setAttribute("aria-pressed", String(selected));
+          const name = resource.childNodes[0].textContent.trim();
+          if (selected) openView(name, { intro: "Ressource d’exemple sélectionnée. Aucun document réel n’est ouvert.", rows: ["État · Indexé pour la démonstration", "Action · Cette sélection ne lance aucune recherche"] });
+        }
+      });
+
+      document.querySelector("[data-demo-form]").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const field = event.currentTarget.querySelector("textarea");
+        if (!field.value.trim()) {
+          field.focus();
+          notify("Écris une réponse pour essayer l’interaction");
+          return;
+        }
+        field.value = "";
+        notify("Réponse simulée · aucune donnée n’a été envoyée");
+      });
+
+      document.querySelectorAll(".floorplan g:last-child g circle").forEach((marker, index) => {
+        const label = `Repère ${String(index + 1).padStart(2, "0")}`;
+        marker.setAttribute("tabindex", "0");
+        marker.setAttribute("role", "button");
+        marker.setAttribute("aria-label", label);
+        marker.addEventListener("click", () => openView(label, {
+          intro: "Annotation fictive associée à ce point du plan.",
+          rows: ["Vérifier la portée structurelle", "Comparer les solutions bois et acier"]
+        }));
+        marker.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            marker.click();
+          }
+        });
+      });
+
+      dialog.addEventListener("click", (event) => {
+        if (event.target === dialog) dialog.close();
+      });
+    })();
+  </script>
+</body>
+</html>

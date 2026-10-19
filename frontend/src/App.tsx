@@ -1,0 +1,755 @@
+import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import {
+  ArrowDownLeft,
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  CircleHelp,
+  Clock3,
+  FileImage,
+  FileText,
+  FolderKanban,
+  GraduationCap,
+  HardDriveDownload,
+  LayoutGrid,
+  LibraryBig,
+  Menu,
+  MessageSquareText,
+  MoreHorizontal,
+  Plus,
+  Search,
+  Send,
+  Settings2,
+  Sparkles,
+  Upload,
+  X,
+} from "lucide-react";
+
+const assistantPortrait = new URL("../../docs/image.png", import.meta.url).href;
+
+type Section = "chat" | "documents" | "exercises" | "notes";
+type ProjectStatus = "En cours" | "À reprendre" | "Terminé";
+type ProjectNote = { id: string; label: string; text: string; created: string; tone: "clay" | "sage" | "blue" };
+type CourseDocument = { id: string; title: string; course: string; subject: string; studyYear: string; meta: string; status: string };
+type Project = {
+  id: string;
+  name: string;
+  type: string;
+  status: ProjectStatus;
+  updated: string;
+  progress: number;
+  location: string;
+  term: string;
+  accent: string;
+  summary: string;
+  files: { id: string; name: string; meta: string; state: string; icon: "plan" | "pdf" | "image" }[];
+  notes: ProjectNote[];
+};
+type ChatItem = { id: number; role: "student" | "assistant"; text: string; time: string };
+
+const starterProjects: Project[] = [
+  {
+    id: "toits-verts",
+    name: "Les Toits Verts",
+    type: "Logement collectif",
+    status: "En cours",
+    updated: "Modifié aujourd’hui",
+    progress: 68,
+    location: "Lyon, France",
+    term: "Semestre 2 · 2025–2026",
+    accent: "sage",
+    summary: "Imaginer un habitat collectif ouvert sur son quartier, avec une attention particulière aux circulations et à la lumière naturelle.",
+    files: [
+      { id: "a1", name: "Plan_RDC_v04.pdf", meta: "Plan · 2,4 Mo", state: "Indexé · 12 pages", icon: "plan" },
+      { id: "a2", name: "Structures_II_notes.pdf", meta: "Cours · 840 Ko", state: "Indexé · 8 pages", icon: "pdf" },
+      { id: "a3", name: "Maquette_sud.jpg", meta: "Image · 3,1 Mo", state: "À analyser", icon: "image" },
+    ],
+    notes: [
+      { id: "n1", label: "À EXPLORER", text: "Comparer les portées en zone C avec une trame secondaire.", created: "Ajoutée aujourd’hui · par Jules", tone: "clay" },
+      { id: "n2", label: "PISTE DE CONCEPTION", text: "Renforcer la lumière naturelle au sud sans perdre l’intimité des logements.", created: "Ajoutée hier · par Jules", tone: "sage" },
+      { id: "n3", label: "DÉCISION À PRENDRE", text: "Bois lamellé-collé ou structure acier ? Comparer les deux avant la prochaine séance.", created: "Ajoutée mardi · par Jules", tone: "blue" },
+    ],
+  },
+  {
+    id: "pavillon-campus",
+    name: "Pavillon du campus",
+    type: "Équipement public",
+    status: "En cours",
+    updated: "Modifié hier",
+    progress: 34,
+    location: "Paris, France",
+    term: "Atelier de projet · 2025–2026",
+    accent: "clay",
+    summary: "Un petit lieu de rencontre étudiant, entre espace de travail partagé et extension du jardin du campus.",
+    files: [
+      { id: "b1", name: "Programme_pavillon.pdf", meta: "Brief · 1,2 Mo", state: "Indexé · 6 pages", icon: "pdf" },
+      { id: "b2", name: "Croquis_implantation.png", meta: "Image · 2,0 Mo", state: "Indexé · 1 page", icon: "image" },
+    ],
+    notes: [
+      { id: "p1", label: "À EXPLORER", text: "Tester une entrée visible depuis le chemin principal du campus.", created: "Ajoutée hier · par Jules", tone: "clay" },
+      { id: "p2", label: "PISTE DE CONCEPTION", text: "Prolonger le jardin dans le pavillon avec une assise en seuil.", created: "Ajoutée lundi · par Jules", tone: "sage" },
+    ],
+  },
+  {
+    id: "maison-des-assos",
+    name: "Maison des associations",
+    type: "Réhabilitation",
+    status: "À reprendre",
+    updated: "Modifié le 3 octobre",
+    progress: 82,
+    location: "Bordeaux, France",
+    term: "Projet libre · 2025–2026",
+    accent: "blue",
+    summary: "Réhabiliter une halle existante pour accueillir des ateliers et des espaces associatifs modulables.",
+    files: [
+      { id: "c1", name: "Relevé_existant.pdf", meta: "Relevé · 4,8 Mo", state: "Indexé · 18 pages", icon: "plan" },
+      { id: "c2", name: "Pistes_matériaux.pdf", meta: "Références · 960 Ko", state: "Indexé · 7 pages", icon: "pdf" },
+    ],
+    notes: [
+      { id: "m1", label: "À CONSERVER", text: "Préserver la trame et les éléments qui racontent l’histoire de la halle.", created: "Ajoutée le 3 octobre · par Jules", tone: "sage" },
+      { id: "m2", label: "MATÉRIAUX", text: "Repérer les matériaux réemployables avant de définir les nouvelles finitions.", created: "Ajoutée le 2 octobre · par Jules", tone: "blue" },
+    ],
+  },
+];
+
+const initialChat: ChatItem[] = [
+  {
+    id: 1,
+    role: "assistant",
+    text: "Bonjour Jules ! J’ai parcouru les documents associés à ce projet. On peut travailler sur le plan, la structure ou les ambiances. Par quoi veux-tu commencer ?",
+    time: "10:42",
+  },
+  {
+    id: 2,
+    role: "student",
+    text: "La portée dans la zone C me semble importante. Quelles pistes pourrais-je étudier ?",
+    time: "10:46",
+  },
+  {
+    id: 3,
+    role: "assistant",
+    text: "Bonne question. Une grande portée n’est pas forcément un problème, mais elle mérite d’être mise en regard du programme, de la hauteur disponible et du système structurel envisagé. Voici des pistes à vérifier pour ton projet.",
+    time: "10:46",
+  },
+];
+
+const starterGeneralCourses: CourseDocument[] = [
+  { id: "course-structures", title: "Structures II - notes de cours.pdf", course: "Structures II", subject: "Structures", studyYear: "2e année", meta: "PDF · 24 pages · Ajouté le 12 octobre", status: "Indexé · 24 pages" },
+  { id: "course-history", title: "Repères d’histoire de l’architecture.pdf", course: "Histoire de l’architecture", subject: "Histoire de l’architecture", studyYear: "1re année", meta: "PDF · 38 pages · Ajouté le 8 octobre", status: "Indexé · 38 pages" },
+  { id: "course-construction", title: "Enveloppe et matériaux - semestre 2.pdf", course: "Construction", subject: "Construction", studyYear: "2e année", meta: "PDF · 16 pages · Ajouté le 2 octobre", status: "Indexé · 16 pages" },
+];
+
+const studyYearOptions = ["1re année", "2e année", "Transversale", "Non précisée"];
+const otherSubjectOption = "__other__";
+
+const suggestedQuestions = [
+  "Comment améliorer la lumière naturelle ?",
+  "Aide-moi à clarifier mon concept",
+  "Propose un exercice sur les portées",
+];
+
+const statusClass: Record<ProjectStatus, string> = {
+  "En cours": "status-active",
+  "À reprendre": "status-paused",
+  Terminé: "status-done",
+};
+
+function ProjectArtwork({ variant = "one" }: { variant?: "one" | "two" | "three" }) {
+  const shapes = {
+    one: <><path d="M23 83 74 46l51 23-51 38z" /><path d="m36 78 38-27v44L36 122z" /><path d="m79 95 38-27v43l-38 27z" /><path d="m74 46 38 17-38 27-38-12z" /><path d="M42 79v21m14-32v42m44-3V82m12-7v30" className="art-line" /></>,
+    two: <><path d="m24 96 43-48 64 24-43 49z" /><path d="m40 88 27-31v41l-27 31z" /><path d="m70 99 44-18v39l-44 17z" /><path d="m67 48 65 24-18 9-47-24z" /><path d="M48 82v24m14-39v43m32-8v24m12-41v37" className="art-line" /></>,
+    three: <><path d="m20 91 54-42 55 28-53 39z" /><path d="m31 86 43-32v46l-43 34z" /><path d="m77 108 40-30v39l-40 29z" /><path d="m74 49 55 28-11 8-44-22z" /><path d="M42 80v28m15-39v42m45-5v33m11-48v32" className="art-line" /></>,
+  };
+  return (
+    <div className={`project-art art-${variant}`} aria-hidden="true">
+      <span className="art-sun" />
+      <svg viewBox="0 0 150 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path className="art-ground" d="m8 126 61-32 72 30-62 34z" />
+        <g className="art-building" strokeLinejoin="round">{shapes[variant]}</g>
+        <path className="art-tree" d="M18 120q-8-21 1-30 12 8 9 22 6-15 15-15 4 12-7 27l-7 12z" />
+        <path className="art-tree" d="M122 112q-5-17 4-24 10 10 5 22 6-10 14-7 1 10-9 20l-8 6z" />
+        <path className="art-shadow" d="m24 132 50-26 55 21-51 28z" />
+      </svg>
+      <span className="art-tag">{variant === "one" ? "01 / HABITER" : variant === "two" ? "02 / RENCONTRER" : "03 / RÉHABITER"}</span>
+    </div>
+  );
+}
+
+function ProjectIcon({ kind }: { kind: Project["files"][number]["icon"] }) {
+  if (kind === "plan") return <LayoutGrid size={18} />;
+  if (kind === "image") return <FileImage size={18} />;
+  return <FileText size={18} />;
+}
+
+function App() {
+  const [projects, setProjects] = useState(starterProjects);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [showCourseLibrary, setShowCourseLibrary] = useState(false);
+  const [reviewingCourseId, setReviewingCourseId] = useState<string | null>(null);
+  const [generalCourses, setGeneralCourses] = useState(starterGeneralCourses);
+  const [courseSearch, setCourseSearch] = useState("");
+  const [courseSubjectFilter, setCourseSubjectFilter] = useState("all");
+  const [courseYearFilter, setCourseYearFilter] = useState("all");
+  const [newCourseSubject, setNewCourseSubject] = useState("À classer");
+  const [newCustomCourseSubject, setNewCustomCourseSubject] = useState("");
+  const [newCourseYear, setNewCourseYear] = useState("Non précisée");
+  const [courseContextByProject, setCourseContextByProject] = useState<Record<string, string[]>>({});
+  const [section, setSection] = useState<Section>("chat");
+  const [search, setSearch] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newType, setNewType] = useState("Projet d’architecture");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [toast, setToast] = useState("");
+  const [question, setQuestion] = useState("");
+  const [chat, setChat] = useState(initialChat);
+  const [chatByProject, setChatByProject] = useState<Record<string, ChatItem[]>>({ "toits-verts": initialChat });
+  const [fileSearch, setFileSearch] = useState("");
+  const [showAllHistory, setShowAllHistory] = useState(false);
+  const [exerciseAnswer, setExerciseAnswer] = useState("");
+  const [exerciseSubmitted, setExerciseSubmitted] = useState(false);
+
+  const activeProject = projects.find((project) => project.id === activeProjectId) ?? null;
+  const visibleProjects = useMemo(() => projects.filter((project) =>
+    `${project.name} ${project.type} ${project.status}`.toLowerCase().includes(search.toLowerCase()),
+  ), [projects, search]);
+  const visibleFiles = activeProject?.files.filter((file) =>
+    `${file.name} ${file.meta} ${file.state}`.toLowerCase().includes(fileSearch.toLowerCase()),
+  ) ?? [];
+  const visibleGeneralCourses = generalCourses.filter((course) =>
+    `${course.title} ${course.course} ${course.subject} ${course.studyYear}`.toLowerCase().includes(courseSearch.toLowerCase())
+      && (courseSubjectFilter === "all" || course.subject === courseSubjectFilter)
+      && (courseYearFilter === "all" || course.studyYear === courseYearFilter),
+  );
+
+  function showToast(message: string) {
+    setToast(message);
+    window.setTimeout(() => setToast(""), 2600);
+  }
+
+  function openProject(projectId: string) {
+    setActiveProjectId(projectId);
+    setShowCourseLibrary(false);
+    setReviewingCourseId(null);
+    setSection("chat");
+    const project = projects.find((item) => item.id === projectId);
+    setChat(chatByProject[projectId] ?? [{
+      id: Date.now(),
+      role: "assistant",
+      text: `Bonjour Jules ! Cet espace est dédié à « ${project?.name ?? "ton projet"} ». Ajoute tes documents ou pose une question pour commencer.`,
+      time: "—",
+    }]);
+    setMobileNavOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function openProjects() {
+    setActiveProjectId(null);
+    setShowCourseLibrary(false);
+    setReviewingCourseId(null);
+  }
+
+  function openCourseLibrary() {
+    setActiveProjectId(null);
+    setShowCourseLibrary(true);
+    setReviewingCourseId(null);
+  }
+
+  function createProject(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const cleanedName = newName.trim();
+    if (!cleanedName) return;
+    const project: Project = {
+      id: `project-${Date.now()}`,
+      name: cleanedName,
+      type: newType,
+      status: "En cours",
+      updated: "Créé à l’instant",
+      progress: 0,
+      location: "À préciser",
+      term: "Nouveau projet",
+      accent: "sage",
+      summary: "Ajoute un peu de contexte pour commencer à organiser ton travail et tes références.",
+      files: [],
+      notes: [],
+    };
+    setProjects((items) => [project, ...items]);
+    const welcome: ChatItem[] = [{ id: Date.now(), role: "assistant", text: `Bienvenue dans « ${project.name} ». Cet espace est distinct de tes autres projets.`, time: "—" }];
+    setChatByProject((items) => ({ ...items, [project.id]: welcome }));
+    setChat(welcome);
+    setNewName("");
+    setShowCreate(false);
+    setActiveProjectId(project.id);
+    setSection("chat");
+    showToast("Projet créé dans cette session de démonstration");
+  }
+
+  function addQuestion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const text = question.trim();
+    if (!text) return;
+    const time = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(new Date());
+    const selectedCourseIds = activeProjectId ? courseContextByProject[activeProjectId] ?? [] : [];
+    const studentMessage: ChatItem = { id: Date.now(), role: "student", text, time };
+    const demoReply: ChatItem = {
+      id: Date.now() + 1,
+      role: "assistant",
+      text: `Réponse de démonstration : ${selectedCourseIds.length ? "les cours généraux sélectionnés seraient ajoutés au contexte du projet." : "aucun cours général n’est ajouté au contexte de ce projet."} Aucune réponse IA n’est générée pour le moment.`,
+      time,
+    };
+    if (!activeProjectId) return;
+    const updatedChat = [...chat, studentMessage, demoReply];
+    setChat(updatedChat);
+    setChatByProject((items) => ({ ...items, [activeProjectId]: updatedChat }));
+    setQuestion("");
+    window.setTimeout(() => document.getElementById(`message-${demoReply.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 30);
+  }
+
+  function addFiles(files: FileList | null) {
+    if (!files?.length || !activeProject) return;
+    const additions = Array.from(files).map((file, index) => ({
+      id: `local-${Date.now()}-${index}`,
+      name: file.name,
+      meta: `Fichier local · ${(file.size / (1024 * 1024)).toFixed(1)} Mo`,
+      state: "Sélectionné · non envoyé",
+      icon: file.type.startsWith("image/") ? "image" as const : "pdf" as const,
+    }));
+    setProjects((items) => items.map((project) => project.id === activeProject.id
+      ? { ...project, files: [...additions, ...project.files] }
+      : project));
+    showToast("Fichier ajouté à la maquette uniquement — aucun envoi effectué");
+  }
+
+  function addGeneralCourseFiles(files: FileList | null) {
+    if (!files?.length) return;
+    const subject = newCourseSubject === otherSubjectOption
+      ? newCustomCourseSubject.trim() || "À classer"
+      : newCourseSubject;
+    const additions = Array.from(files).map((file, index) => ({
+      id: `course-local-${Date.now()}-${index}`,
+      title: file.name,
+      course: subject,
+      subject,
+      studyYear: newCourseYear,
+      meta: `Fichier local · ${(file.size / (1024 * 1024)).toFixed(1)} Mo`,
+      status: "Sélectionné · non envoyé",
+    }));
+    setGeneralCourses((items) => [...additions, ...items]);
+    showToast("Cours ajouté à la maquette uniquement — aucun envoi effectué");
+  }
+
+  function updateGeneralCourseClassification(id: string, subject: string, studyYear: string) {
+    setGeneralCourses((items) => items.map((course) => course.id === id
+      ? { ...course, subject: subject.trim() || "À classer", studyYear }
+      : course));
+  }
+
+  function toggleCourseContext(projectId: string, courseId: string) {
+    setCourseContextByProject((current) => {
+      const selected = current[projectId] ?? [];
+      const next = selected.includes(courseId)
+        ? selected.filter((id) => id !== courseId)
+        : [...selected, courseId];
+      return { ...current, [projectId]: next };
+    });
+  }
+
+  function submitExercise(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!exerciseAnswer.trim()) {
+      showToast("Écris quelques lignes avant de demander une correction");
+      return;
+    }
+    setExerciseSubmitted(true);
+  }
+
+  function selectSection(next: Section) {
+    setSection(next);
+    setMobileNavOpen(false);
+  }
+
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <button className="brand-lockup" type="button" onClick={openProjects} aria-label="Retour à mes projets">
+          <span className="brand-mark"><GraduationCap size={19} strokeWidth={1.8} /></span>
+          <span className="brand-word">archi<span>prof</span><small>ATELIER D’APPRENTISSAGE</small></span>
+        </button>
+        <div className="topbar-right">
+          <span className="demo-pill"><span /> MODE DÉMONSTRATION</span>
+          <button className="help-button" type="button" onClick={() => showToast("Centre d’aide : bientôt disponible")} aria-label="Aide"><CircleHelp size={18} /></button>
+          <button className="profile-chip" type="button" onClick={() => showToast("Profil de démonstration · Jules Dubrun")}>
+            <span className="profile-avatar">JD</span><span className="profile-name">Jules Dubrun</span><ChevronDown size={15} />
+          </button>
+          {activeProject && <button className="mobile-menu-button" type="button" onClick={() => setMobileNavOpen((value) => !value)} aria-label="Ouvrir le menu"><Menu size={20} /></button>}
+        </div>
+      </header>
+
+      <main className="main-frame">
+        {!activeProject ? (
+          showCourseLibrary ? (
+            <GeneralCoursesView
+              courses={visibleGeneralCourses}
+              allCourses={generalCourses}
+              search={courseSearch}
+              subjectFilter={courseSubjectFilter}
+              yearFilter={courseYearFilter}
+              newSubject={newCourseSubject}
+              customSubject={newCustomCourseSubject}
+              newYear={newCourseYear}
+              reviewingCourse={generalCourses.find((course) => course.id === reviewingCourseId) ?? null}
+              onSearch={setCourseSearch}
+              onSubjectFilter={setCourseSubjectFilter}
+              onYearFilter={setCourseYearFilter}
+              onNewSubject={setNewCourseSubject}
+              onCustomSubject={setNewCustomCourseSubject}
+              onNewYear={setNewCourseYear}
+              onFiles={addGeneralCourseFiles}
+              onSaveClassification={updateGeneralCourseClassification}
+              onReview={setReviewingCourseId}
+              onBack={openProjects}
+              onExitReview={() => setReviewingCourseId(null)}
+              onToast={showToast}
+            />
+          ) : (
+            <ProjectsHome
+              projects={visibleProjects}
+              search={search}
+              onSearch={setSearch}
+              onOpen={openProject}
+              onCreate={() => setShowCreate(true)}
+              onOpenCourses={openCourseLibrary}
+            />
+          )
+        ) : (
+          <div className="workspace-layout">
+            <aside className={`workspace-sidebar ${mobileNavOpen ? "is-open" : ""}`}>
+              <button className="back-projects" type="button" onClick={openProjects}>
+                <ArrowLeft size={15} /> <span>Mes projets</span>
+              </button>
+              <div className="sidebar-project-switcher">
+                <span className="switcher-caption">PROJET ACTIF</span>
+                <select value={activeProject.id} onChange={(event) => openProject(event.target.value)} aria-label="Changer de projet">
+                  {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                </select>
+                <ChevronDown className="switcher-chevron" size={15} />
+              </div>
+              <div className="sidebar-label">ESPACE DE TRAVAIL</div>
+              <nav className="workspace-nav" aria-label="Sections du projet">
+                <NavItem active={section === "chat"} icon={<MessageSquareText size={18} />} label="Assistant" onClick={() => selectSection("chat")} />
+                <NavItem active={section === "documents"} icon={<LibraryBig size={18} />} label="Documents" count={activeProject.files.length} onClick={() => selectSection("documents")} />
+                <NavItem active={section === "exercises"} icon={<BookOpen size={18} />} label="Exercices" onClick={() => selectSection("exercises")} />
+                <NavItem active={section === "notes"} icon={<FileText size={18} />} label="Notes de projet" onClick={() => selectSection("notes")} />
+              </nav>
+              <div className="sidebar-bottom">
+                <div className="side-tip"><Sparkles size={16} /><span>Chaque projet garde son propre contexte et ses documents.</span></div>
+                <button className="sidebar-settings" type="button" onClick={() => showToast("Paramètres du projet · bientôt disponibles")}><Settings2 size={17} /> Paramètres du projet</button>
+              </div>
+            </aside>
+
+            <section className="workspace-content">
+              <div className="workspace-heading">
+                <div className="breadcrumbs"><button type="button" onClick={openProjects}>Mes projets</button><ChevronRight size={14} /><span>{activeProject.name}</span></div>
+                <div className="project-heading-row">
+                  <div>
+                    <div className="project-kicker"><span className={`status-dot ${statusClass[activeProject.status]}`} />{activeProject.status}<span className="heading-separator">·</span>{activeProject.type}</div>
+                    <h1>{activeProject.name}</h1>
+                    <p>{activeProject.term} <span>·</span> {activeProject.location}</p>
+                  </div>
+                  <div className="heading-actions">
+                    <button className="icon-button" type="button" onClick={() => showToast("Options du projet · bientôt disponibles")} aria-label="Plus d’options"><MoreHorizontal size={20} /></button>
+                  </div>
+                </div>
+              </div>
+
+              {section === "chat" && <ChatView project={activeProject} chat={chat} question={question} generalCourses={generalCourses} selectedCourseIds={courseContextByProject[activeProject.id] ?? []} onToggleCourse={(courseId) => toggleCourseContext(activeProject.id, courseId)} onQuestion={setQuestion} onSubmit={addQuestion} onNavigate={selectSection} showAllHistory={showAllHistory} onShowHistory={() => setShowAllHistory((value) => !value)} />}
+              {section === "documents" && <DocumentsView project={activeProject} files={visibleFiles} search={fileSearch} onSearch={setFileSearch} onFiles={addFiles} onConnectDrive={() => showToast("Google Drive n’est pas connecté dans ce prototype")} />}
+              {section === "exercises" && <ExercisesView answer={exerciseAnswer} submitted={exerciseSubmitted} onAnswer={setExerciseAnswer} onSubmit={submitExercise} />}
+              {section === "notes" && <NotesView project={activeProject} onToast={showToast} />}
+            </section>
+          </div>
+        )}
+      </main>
+
+      <footer className="demo-footer"><span className="demo-footer-dot" /> Contenu d’exemple uniquement <span>·</span> Aucune donnée n’est enregistrée ni envoyée</footer>
+
+      {showCreate && <CreateProjectDialog name={newName} type={newType} onName={setNewName} onType={setNewType} onClose={() => setShowCreate(false)} onSubmit={createProject} />}
+      {toast && <div className="toast-message" role="status"><Check size={16} />{toast}</div>}
+    </div>
+  );
+}
+
+function ProjectsHome({
+  projects,
+  search,
+  onSearch,
+  onOpen,
+  onCreate,
+  onOpenCourses,
+}: {
+  projects: Project[];
+  search: string;
+  onSearch: (value: string) => void;
+  onOpen: (id: string) => void;
+  onCreate: () => void;
+  onOpenCourses: () => void;
+}) {
+  return (
+    <section className="projects-home">
+      <div className="home-intro">
+        <div className="eyebrow"><span className="eyebrow-line" /> TON ESPACE DE TRAVAIL</div>
+        <div className="home-heading-row">
+          <div><h1>Bonjour Jules<span className="hello-period">.</span></h1><p>Reprends là où tu en étais, ou ouvre un nouvel atelier.</p></div>
+          <div className="home-actions"><button className="secondary-button" type="button" onClick={onOpenCourses}><BookOpen size={17} /> Cours généraux</button><button className="primary-button create-project-button" type="button" onClick={onCreate}><Plus size={18} /> Nouveau projet</button></div>
+        </div>
+        <div className="home-meta-row"><span><FolderKanban size={16} /> {projects.length} projets</span><span className="meta-divider" /><span><Clock3 size={16} /> Tes espaces restent séparés</span></div>
+      </div>
+
+      <section className="projects-section" aria-labelledby="projects-title">
+        <div className="section-heading-row">
+          <div><h2 id="projects-title">Mes projets <span className="muted-count">{projects.length}</span></h2><p>Chaque projet a ses propres échanges et documents.</p></div>
+          <label className="search-box project-search"><Search size={17} /><input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Rechercher un projet" aria-label="Rechercher un projet" />{search && <button type="button" onClick={() => onSearch("")} aria-label="Effacer la recherche"><X size={15} /></button>}</label>
+        </div>
+        {projects.length ? (
+          <div className="project-grid">
+            {projects.map((project, index) => <ProjectCard key={project.id} project={project} variant={index % 3 === 0 ? "one" : index % 3 === 1 ? "two" : "three"} onOpen={() => onOpen(project.id)} />)}
+            <button className="new-project-card" type="button" onClick={onCreate}><span className="new-project-icon"><Plus size={21} /></span><b>Commencer un nouveau projet</b><span>Un nouvel espace, prêt à prendre forme.</span><span className="new-project-arrow"><ArrowRight size={16} /></span></button>
+          </div>
+        ) : (
+          <div className="empty-projects"><span className="empty-icon"><Search size={22} /></span><h3>Aucun projet trouvé</h3><p>Essaie avec un autre nom ou crée un nouvel espace.</p><button type="button" className="text-button" onClick={onCreate}>Créer un projet <ArrowRight size={15} /></button></div>
+        )}
+      </section>
+      <div className="home-bottom-note"><span className="note-sparkle"><Sparkles size={17} /></span><p><b>Un espace par idée.</b> Tes documents et tes échanges restent rattachés au projet que tu consultes.</p><span className="note-illustration" aria-hidden="true">⌁</span></div>
+    </section>
+  );
+}
+
+function GeneralCoursesView({
+  courses,
+  allCourses,
+  search,
+  subjectFilter,
+  yearFilter,
+  newSubject,
+  customSubject,
+  newYear,
+  reviewingCourse,
+  onSearch,
+  onSubjectFilter,
+  onYearFilter,
+  onNewSubject,
+  onCustomSubject,
+  onNewYear,
+  onFiles,
+  onSaveClassification,
+  onReview,
+  onBack,
+  onExitReview,
+  onToast,
+}: {
+  courses: CourseDocument[];
+  allCourses: CourseDocument[];
+  search: string;
+  subjectFilter: string;
+  yearFilter: string;
+  newSubject: string;
+  customSubject: string;
+  newYear: string;
+  reviewingCourse: CourseDocument | null;
+  onSearch: (value: string) => void;
+  onSubjectFilter: (value: string) => void;
+  onYearFilter: (value: string) => void;
+  onNewSubject: (value: string) => void;
+  onCustomSubject: (value: string) => void;
+  onNewYear: (value: string) => void;
+  onFiles: (files: FileList | null) => void;
+  onSaveClassification: (id: string, subject: string, studyYear: string) => void;
+  onReview: (id: string) => void;
+  onBack: () => void;
+  onExitReview: () => void;
+  onToast: (message: string) => void;
+}) {
+  const subjectOptions = Array.from(new Set([...allCourses.map((course) => course.subject), "À classer"])).sort((left, right) => left.localeCompare(right, "fr"));
+
+  return (
+    <section className="projects-home general-courses-home">
+      <button className="back-projects" type="button" onClick={onBack}><ArrowLeft size={15} /> <span>Mes projets</span></button>
+      <div className="home-intro general-courses-intro">
+        <div className="eyebrow"><span className="eyebrow-line" /> ESPACE PERSONNEL</div>
+        <div className="home-heading-row">
+          <div><h1>Cours généraux<span className="hello-period">.</span></h1><p>Révise tes cours ici, indépendamment de tes projets.</p></div>
+        </div>
+        <div className="home-meta-row"><span><BookOpen size={16} /> {allCourses.length} cours</span><span className="meta-divider" /><span><FolderKanban size={16} /> Utilisables dans plusieurs projets sur sélection</span></div>
+      </div>
+      <div className="course-add-toolbar">
+        <label className="course-field"><span>Matière du cours ajouté</span><select value={newSubject} onChange={(event) => onNewSubject(event.target.value)}>{subjectOptions.map((subject) => <option key={subject} value={subject}>{subject}</option>)}<option value={otherSubjectOption}>Autre matière…</option></select></label>
+        {newSubject === otherSubjectOption && <label className="course-field"><span>Nom de la matière</span><input value={customSubject} onChange={(event) => onCustomSubject(event.target.value)} placeholder="Ex. Théorie de l’architecture" /></label>}
+        <label className="course-field"><span>Année d’étude</span><select value={newYear} onChange={(event) => onNewYear(event.target.value)}>{studyYearOptions.map((year) => <option key={year} value={year}>{year}</option>)}</select></label>
+        <label className="primary-button upload-button"><Upload size={17} /> Ajouter des cours<input type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp" onChange={(event) => { onFiles(event.target.files); event.currentTarget.value = ""; }} /></label>
+      </div>
+      <div className="general-courses-content">
+        <div className="file-notice"><span className="notice-icon"><CircleHelp size={16} /></span><span><b>Prototype front-end</b> · Les fichiers restent sur cet appareil et ne sont pas envoyés ni analysés.</span></div>
+        {reviewingCourse ? (
+          <section className="course-review-panel">
+            <button className="text-button" type="button" onClick={onExitReview}><ArrowLeft size={15} /> Tous les cours</button>
+            <div className="feature-page-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> {reviewingCourse.course.toUpperCase()}</div><h2>{reviewingCourse.title}</h2><p>Révision indépendante de tes projets · {reviewingCourse.status}</p></div></div>
+            <article className="answer-section"><div className="answer-section-title"><span className="answer-section-mark">01</span><span>À retenir</span><span className="source-tag">COURS GÉNÉRAL</span></div><p>Les notes de ce cours et leurs références seront mobilisées ici une fois le service documentaire connecté. Cette fiche est un exemple d’interface, pas une synthèse réelle du document.</p></article>
+            <div className="course-review-actions"><button className="secondary-button" type="button" onClick={() => onToast("La synthèse sera disponible après connexion de l’API documentaire")}>Générer une synthèse</button><button className="primary-button" type="button" onClick={() => onToast("Le quiz sera disponible après connexion de l’API pédagogique")}>Lancer un quiz</button></div>
+          </section>
+        ) : (
+          <>
+            <div className="section-heading-row course-library-heading"><div><h2>Ma bibliothèque <span className="muted-count">{courses.length}</span></h2><p>Ces supports ne sont rattachés à aucun projet.</p></div></div>
+            <div className="course-filter-row">
+              <label className="search-box course-search"><Search size={17} /><input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Rechercher un cours" aria-label="Rechercher un cours" />{search && <button type="button" onClick={() => onSearch("")} aria-label="Effacer la recherche"><X size={15} /></button>}</label>
+              <label className="course-filter"><span>Matière</span><select value={subjectFilter} onChange={(event) => onSubjectFilter(event.target.value)}><option value="all">Toutes les matières</option>{subjectOptions.map((subject) => <option key={subject} value={subject}>{subject}</option>)}</select></label>
+              <label className="course-filter"><span>Année d’étude</span><select value={yearFilter} onChange={(event) => onYearFilter(event.target.value)}><option value="all">Toutes les années</option>{studyYearOptions.map((year) => <option key={year} value={year}>{year}</option>)}</select></label>
+            </div>
+            <div className="course-library-list">{courses.length ? courses.map((course) => <article className="course-library-row" key={course.id}><span className="document-icon document-plan"><BookOpen size={18} /></span><span className="course-library-info"><b>{course.title}</b><small>{course.subject} · {course.studyYear} · {course.meta}</small></span><label className="course-row-field course-row-subject"><span className="visually-hidden">Matière</span><select aria-label={`Matière de ${course.title}`} value={course.subject} onChange={(event) => onSaveClassification(course.id, event.target.value, course.studyYear)}>{subjectOptions.map((subject) => <option key={subject} value={subject}>{subject}</option>)}</select></label><label className="course-row-field course-row-year"><span className="visually-hidden">Année d’étude</span><select aria-label={`Année d’étude de ${course.title}`} value={course.studyYear} onChange={(event) => onSaveClassification(course.id, course.subject, event.target.value)}>{studyYearOptions.map((year) => <option key={year} value={year}>{year}</option>)}</select></label><span className={`file-state ${course.status.includes("non envoyé") ? "file-state-pending" : ""}`}><i />{course.status}</span><button className="secondary-button" type="button" onClick={() => onReview(course.id)}>Réviser <ArrowRight size={15} /></button></article>) : <div className="empty-documents"><span className="empty-icon"><BookOpen size={21} /></span><b>Aucun cours trouvé</b><p>Ajoute un support ou modifie ta recherche.</p></div>}</div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ProjectCard({ project, variant, onOpen }: { project: Project; variant: "one" | "two" | "three"; onOpen: () => void }) {
+  return (
+    <article className="project-card">
+      <button className="project-card-open" type="button" onClick={onOpen} aria-label={`Ouvrir le projet ${project.name}`}>
+        <ProjectArtwork variant={variant} />
+        <div className="project-card-body">
+          <div className="project-card-kicker"><span className={`status-dot ${statusClass[project.status]}`} />{project.status}<span>·</span>{project.type}</div>
+          <div className="project-card-title-row"><h3>{project.name}</h3><span className="card-arrow"><ArrowUpRightIcon /></span></div>
+          <p className="project-card-summary">{project.summary}</p>
+          <div className="project-card-progress"><div className="progress-label"><span>Avancement</span><b>{project.progress}%</b></div><div className="progress-track"><span style={{ width: `${project.progress}%` }} /></div></div>
+          <div className="project-card-footer"><span><Clock3 size={14} />{project.updated}</span><span>{project.files.length} documents</span></div>
+        </div>
+      </button>
+    </article>
+  );
+}
+
+function ArrowUpRightIcon() {
+  return <ArrowDownLeft size={16} className="arrow-up-right" />;
+}
+
+function NavItem({ active, icon, label, count, onClick }: { active: boolean; icon: ReactNode; label: string; count?: number; onClick: () => void }) {
+  return <button className={`workspace-nav-item ${active ? "active" : ""}`} type="button" onClick={onClick}>{icon}<span>{label}</span>{count !== undefined && <small>{count}</small>}</button>;
+}
+
+function ChatView({
+  project,
+  chat,
+  question,
+  generalCourses,
+  selectedCourseIds,
+  onToggleCourse,
+  onQuestion,
+  onSubmit,
+  onNavigate,
+  showAllHistory,
+  onShowHistory,
+}: {
+  project: Project;
+  chat: ChatItem[];
+  question: string;
+  generalCourses: CourseDocument[];
+  selectedCourseIds: string[];
+  onToggleCourse: (courseId: string) => void;
+  onQuestion: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onNavigate: (section: Section) => void;
+  showAllHistory: boolean;
+  onShowHistory: () => void;
+}) {
+  const recentQuestions = ["Comment réduire la portée en zone C ?", "Quelle ambiance pour le séjour ?", "Faire le point sur le concept", "Quelles références pour une façade active ?"];
+  return (
+    <div className="chat-layout">
+      <section className="chat-panel" aria-label="Conversation avec ArchiProf">
+        <div className="chat-session-header"><div className="assistant-identity"><div className="assistant-avatar"><img src={assistantPortrait} alt="" /></div><div><b>ArchiProf</b><span>Assistant pédagogique · {project.name}</span></div><span className="online-status"><i /> Exemple</span></div><button className="session-menu" type="button" aria-label="Options de la conversation"><MoreHorizontal size={19} /></button></div>
+        <div className="chat-messages">
+          <div className="date-divider"><span>Aujourd’hui</span></div>
+          {chat.map((item) => item.role === "student" ? (
+            <div className="message-row student-message" id={`message-${item.id}`} key={item.id}><div className="student-bubble">{item.text}</div><span className="message-time">{item.time}</span></div>
+          ) : (
+            <div className="assistant-message-block" id={`message-${item.id}`} key={item.id}>
+              <div className="message-assistant-avatar"><img src={assistantPortrait} alt="" /></div>
+              <div className="assistant-message-content"><div className="assistant-message-meta"><b>ArchiProf</b><time>{item.time}</time></div><p className="assistant-intro">{item.text}</p>
+                {item.id === 3 && <StructuredAnswer onNavigate={onNavigate} />}
+              </div>
+            </div>
+          ))}
+          <div className="prompt-suggestions"><span>POUR CONTINUER</span><div>{suggestedQuestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => onQuestion(suggestion)}>{suggestion}<ArrowRight size={13} /></button>)}</div></div>
+        </div>
+        <form className="chat-composer" onSubmit={onSubmit}>
+          <textarea value={question} onChange={(event) => onQuestion(event.target.value)} placeholder="Pose une question sur ton projet ou tes cours…" rows={2} aria-label="Écrire une question" onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} />
+          <div className="composer-footer"><span><Sparkles size={14} /> Réponse simulée · données de démonstration</span><button className="send-button" type="submit" disabled={!question.trim()} aria-label="Envoyer la question"><Send size={16} /></button></div>
+        </form>
+        <p className="chat-disclaimer">ArchiProf accompagne ta réflexion, mais ne remplace pas les retours de ton enseignant.</p>
+      </section>
+      <aside className="chat-context-panel">
+        <section className="context-card project-context-card"><div className="context-card-heading"><span className="context-icon context-icon-sage"><FolderKanban size={16} /></span><span>CONTEXTE DU PROJET</span><button type="button" aria-label="Plus d’options"><MoreHorizontal size={17} /></button></div><h3>{project.name}</h3><p>{project.summary}</p><div className="context-tags"><span>{project.type}</span><span>{project.location}</span></div><button className="context-link" type="button" onClick={() => onNavigate("notes")}>Voir les notes du projet <ArrowRight size={14} /></button></section>
+        <section className="context-card general-course-context"><div className="context-card-heading"><span className="context-icon context-icon-blue"><BookOpen size={16} /></span><span>COURS GÉNÉRAUX</span><span className="context-count">{selectedCourseIds.length}</span></div><p className="context-helper">Choisis les cours à utiliser dans cette conversation. Aucun n’est inclus par défaut.</p><div className="course-context-list">{generalCourses.map((course) => <label className="course-context-option" key={course.id}><input type="checkbox" checked={selectedCourseIds.includes(course.id)} onChange={() => onToggleCourse(course.id)} /><span><b>{course.course}</b><small>{course.title}</small></span></label>)}</div><p className="context-prototype-note">Sélection de démonstration · aucun document envoyé</p></section>
+        <section className="context-card sources-card"><div className="context-card-heading"><span className="context-icon context-icon-clay"><LibraryBig size={16} /></span><span>SOURCES DU PROJET</span><button type="button" aria-label="Voir les documents" onClick={() => onNavigate("documents")}><ArrowRight size={16} /></button></div><div className="source-count"><b>{project.files.length}</b><span>documents associés</span></div><div className="source-mini-list">{project.files.slice(0, 3).map((file) => <div className="source-mini" key={file.id}><span className="mini-file-icon"><ProjectIcon kind={file.icon} /></span><span><b>{file.name}</b><small>{file.state}</small></span></div>)}</div><button className="context-link" type="button" onClick={() => onNavigate("documents")}>Ouvrir la bibliothèque <ArrowRight size={14} /></button></section>
+        <section className="context-card history-card"><div className="context-card-heading"><span className="context-icon context-icon-blue"><Clock3 size={16} /></span><span>HISTORIQUE RÉCENT</span></div><div className="history-list">{recentQuestions.slice(0, showAllHistory ? 4 : 3).map((item, index) => <button type="button" className="history-item" key={item} onClick={() => document.getElementById(`message-${chat[Math.min(index * 2 + 1, chat.length - 1)]?.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}><span className="history-index">0{index + 1}</span><span><b>{item}</b><small>{index === 0 ? "Aujourd’hui · 10:46" : index === 1 ? "Hier · 16:12" : "Mardi · 09:30"}</small></span><ChevronRight size={15} /></button>)}</div><button className="context-link" type="button" onClick={onShowHistory}>{showAllHistory ? "Réduire l’historique" : "Voir l’historique complet"}<ArrowRight size={14} /></button></section>
+      </aside>
+    </div>
+  );
+}
+
+function StructuredAnswer({ onNavigate }: { onNavigate: (section: Section) => void }) {
+  return (
+    <div className="answer-structure">
+      <article className="answer-section course-answer"><div className="answer-section-title"><span className="answer-section-mark">01</span><span>Dans tes cours</span><span className="source-tag">COURS</span></div><p>Pour une portée importante, compare plusieurs systèmes porteurs en fonction de l’usage, de la trame et de la hauteur disponible.</p><button className="citation-link" type="button" onClick={() => onNavigate("documents")}><BookOpen size={14} /><span><b>Structures II</b><small>Chapitre 4 · Principes de stabilité · p. 18</small></span><ArrowRight size={14} /></button></article>
+      <article className="answer-section general-answer"><div className="answer-section-title"><span className="answer-section-mark">02</span><span>Règle générale</span><span className="source-tag general-tag">GÉNÉRAL</span></div><p>Tu peux étudier une poutre de plus grande portée, une trame intermédiaire ou un changement de matériau. Chaque piste a des conséquences sur l’espace et la mise en œuvre.</p><div className="answer-hint"><Sparkles size={14} /> Pense à comparer aussi l’impact sur les pièces voisines.</div></article>
+      <article className="answer-section local-answer"><div className="answer-section-title"><span className="answer-section-mark">03</span><span>Source locale</span><span className="source-tag local-tag">À VÉRIFIER</span></div><p>Aucune source réglementaire locale n’est configurée pour ce projet. Vérifie les règles applicables auprès de ton enseignant ou de la source officielle.</p><button className="small-text-action" type="button" onClick={() => onNavigate("documents")}>Ajouter une source au projet <ArrowRight size={13} /></button></article>
+      <div className="answer-followup"><span>Tu veux explorer ces pistes ?</span><button type="button" onClick={() => onNavigate("exercises")}>Comparer les systèmes <ArrowRight size={14} /></button></div>
+    </div>
+  );
+}
+
+function DocumentsView({ project, files, search, onSearch, onFiles, onConnectDrive }: {
+  project: Project;
+  files: Project["files"];
+  search: string;
+  onSearch: (value: string) => void;
+  onFiles: (files: FileList | null) => void;
+  onConnectDrive: () => void;
+}) {
+  return (
+    <section className="feature-page">
+      <div className="feature-page-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> ESPACE DOCUMENTAIRE</div><h2>Bibliothèque du projet</h2><p>Retrouve les documents de « {project.name} » et leur état d’indexation.</p></div><label className="primary-button upload-button"><Upload size={17} /> Ajouter des fichiers<input type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp" onChange={(event) => onFiles(event.target.files)} /></label></div>
+      <div className="file-notice"><span className="notice-icon"><CircleHelp size={16} /></span><span><b>Prototype front-end</b> · Les fichiers restent sur cet appareil et ne sont pas envoyés ni analysés.</span></div>
+      <div className="document-toolbar"><label className="search-box"><Search size={16} /><input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Rechercher un document" aria-label="Rechercher un document" /></label><button className="secondary-button" type="button" onClick={onConnectDrive}><HardDriveDownload size={16} /> Connecter Google Drive</button></div>
+      <div className="document-table"><div className="document-table-header"><span>DOCUMENT</span><span>ÉTAT</span><span>SOURCE</span><span /></div>{files.length ? files.map((file) => <div className="document-row" key={file.id}><div className="document-name"><span className={`document-icon document-${file.icon}`}><ProjectIcon kind={file.icon} /></span><span><b>{file.name}</b><small>{file.meta}</small></span></div><span className={`file-state ${file.state.includes("non envoyé") ? "file-state-pending" : ""}`}><i />{file.state}</span><span className="file-source">{file.id.startsWith("local-") ? "Fichier local" : "Projet"}</span><button className="icon-button" type="button" aria-label={`Options pour ${file.name}`}><MoreHorizontal size={18} /></button></div>) : <div className="empty-documents"><span className="empty-icon"><FileText size={21} /></span><b>Aucun document trouvé</b><p>Ajoute un fichier ou modifie ta recherche.</p></div>}</div>
+      <div className="document-footnote"><span><Check size={15} /> {files.length} documents dans cet espace</span><button type="button" onClick={onConnectDrive}>Synchronisation Drive <ArrowRight size={14} /></button></div>
+    </section>
+  );
+}
+
+function ExercisesView({ answer, submitted, onAnswer, onSubmit }: { answer: string; submitted: boolean; onAnswer: (value: string) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  return (
+    <section className="feature-page exercise-page">
+      <div className="feature-page-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> APPRENTISSAGE ACTIF</div><h2>Exercices &amp; correction</h2><p>Entraîne-toi à argumenter tes choix de conception.</p></div><span className="demo-label"><Sparkles size={14} /> Exemple de parcours</span></div>
+      <div className="exercise-layout"><article className="exercise-card"><div className="exercise-card-top"><span className="exercise-number">EXERCICE 01</span><span className="difficulty-pill">Niveau débutant</span></div><h3>Choisir un système porteur</h3><p className="exercise-prompt">Une salle commune de 7 mètres de large doit rester dégagée de poteaux au centre. Cite deux systèmes que tu pourrais étudier et explique brièvement ce que tu comparerais.</p><div className="exercise-objective"><BookOpen size={15} /><span>Objectif : relier portée, structure et usage</span></div><form className="exercise-answer" onSubmit={onSubmit}><label htmlFor="exercise-response">TA RÉPONSE</label><textarea id="exercise-response" rows={5} value={answer} onChange={(event) => { onAnswer(event.target.value); }} placeholder="Décris tes pistes et ton raisonnement…" /><div className="exercise-answer-footer"><span>{answer.length} caractères · réponse non enregistrée</span><button className="primary-button" type="submit">Voir la correction <ArrowRight size={15} /></button></div></form></article><aside className="exercise-aside"><div className="progress-card"><div className="context-card-heading"><span className="context-icon context-icon-sage"><GraduationCap size={16} /></span><span>TA PROGRESSION</span></div><div className="progress-empty"><span>—</span><p>Les exercices terminés apparaîtront ici.</p></div><div className="progress-track"><span style={{ width: "0%" }} /></div><small>0 exercice terminé</small></div><div className="teacher-note"><Sparkles size={16} /><p>La correction t’aide à raisonner. Elle ne remplace pas le retour de ton enseignant.</p></div></aside></div>
+      {submitted && <div className="correction-panel" role="status"><div className="correction-heading"><span className="context-icon context-icon-sage"><Check size={16} /></span><div><b>Correction guidée · exemple</b><small>Cette correction n’analyse pas ta réponse.</small></div></div><p>Compare tes pistes selon la portée libre, la hauteur structurelle nécessaire, le matériau, les appuis et l’impact sur l’espace. Tu peux aussi demander à ton enseignant quels critères priment pour l’exercice.</p><div className="answer-hint"><Sparkles size={14} /> Essaie de justifier une piste à partir de l’usage de la salle.</div></div>}
+    </section>
+  );
+}
+
+function NotesView({ project, onToast }: { project: Project; onToast: (message: string) => void }) {
+  return (
+    <section className="feature-page notes-page"><div className="feature-page-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> CARNET DE PROJET</div><h2>Notes de projet</h2><p>Les idées et décisions à garder près de toi pour « {project.name} ».</p></div><button className="secondary-button" type="button" onClick={() => onToast("Création de note à connecter au stockage")}><Plus size={16} /> Ajouter une note</button></div><div className="notes-board">{project.notes.map((note) => <article className={`note-card note-card-${note.tone}`} key={note.id}><span className="note-card-label">{note.label}</span><p>{note.text}</p><small>{note.created}</small></article>)}<button className="new-note-card" type="button" onClick={() => onToast("Création de note à connecter au stockage")}><Plus size={19} /><span>Ajouter une note</span></button></div><div className="file-notice"><span className="notice-icon"><CircleHelp size={16} /></span><span><b>Notes d’exemple</b> · Chaque projet affiche ses propres notes. Elles ne sont pas encore enregistrées.</span></div></section>
+  );
+}
+
+function CreateProjectDialog({ name, type, onName, onType, onClose, onSubmit }: { name: string; type: string; onName: (value: string) => void; onType: (value: string) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><div className="modal-header"><div><span className="modal-eyebrow">NOUVEL ESPACE DE TRAVAIL</span><h2 id="create-title">Donne forme à une idée.</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="Fermer"><X size={19} /></button></div><p className="modal-copy">Chaque projet garde ses propres documents, conversations et notes.</p><form onSubmit={onSubmit}><label className="form-field"><span>Nom du projet</span><input autoFocus value={name} onChange={(event) => onName(event.target.value)} placeholder="Ex. Maison de quartier" required maxLength={80} /></label><label className="form-field"><span>Type de projet</span><select value={type} onChange={(event) => onType(event.target.value)}><option>Projet d’architecture</option><option>Logement collectif</option><option>Équipement public</option><option>Réhabilitation</option><option>Projet libre</option></select></label><div className="modal-notice"><Sparkles size={16} /><span>Ce projet sera créé dans la démonstration locale ; il ne sera pas sauvegardé après fermeture.</span></div><div className="modal-actions"><button className="secondary-button" type="button" onClick={onClose}>Annuler</button><button className="primary-button" type="submit" disabled={!name.trim()}>Créer le projet <ArrowRight size={15} /></button></div></form></section></div>
+  );
+}
+
+export default App;

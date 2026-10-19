@@ -1,6 +1,8 @@
 # Journal des décisions
 
 ## Décisions actées
+- 2026-10-19 : retenir un périmètre MVP large couvrant les parcours cours, projets, exercices, documents, Google Drive, RAG, LLM et mise en production ; le cycle front-driven est un incrément, pas le périmètre complet. Référence : `docs/mvp.md`.
+- 2026-10-19 : embeddings exécutés localement via FastEmbed ; modèle multilingue initial `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384 dimensions), à évaluer sur nos documents français. Le fournisseur du LLM de génération reste à choisir.
 - RAG dès le départ
 - cible : étudiant 1re / 2e année
 - aide aux cours et à la production

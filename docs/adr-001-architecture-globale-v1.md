@@ -99,7 +99,7 @@ A trancher en comite ARCHI/PMPO/DevEx:
 1. Stack frontend exacte
 2. Stack backend exacte
 3. Provider SQL/objet/vecteur
-4. Modele embeddings initial
+4. Fournisseur et modele du LLM de generation
 5. Politique retention donnees
 
 ## 4.b Choix valides a ce stade
@@ -107,7 +107,8 @@ Valides par PM/PO:
 - Frontend: F2 (React + Vite + TypeScript + Tailwind)
 - Backend: B1 (FastAPI + worker async)
 - Data layer: D1 (Supabase: Postgres + Storage + pgvector)
-- Embeddings: E1 (OpenAI embedding small)
+- Embeddings: execution locale avec FastEmbed ; modele multilingue initial `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384 dimensions), a evaluer sur le corpus Archibot.
+- LLM de generation: fournisseur et modele a choisir ulterieurement ; independant du provider d'embeddings.
 - Retention: R2 (politique stricte, logs courts)
 
 ## 4.c Strategie hebergement backend

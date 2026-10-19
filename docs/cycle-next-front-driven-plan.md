@@ -5,6 +5,8 @@ Date: 2026-09-28
 ## Objectif
 Piloter la suite des features a partir des ecrans et parcours utilisateur, avec implementation back strictement alignee sur les besoins front.
 
+Ce cycle est un premier incrément de livraison, pas une réduction du périmètre MVP. Le MVP complet inclut aussi l'ingestion et le RAG, l'assistant LLM, les parcours cours/projet/exercices, la persistance, Google Drive et la mise en production ; voir [MVP](mvp.md).
+
 ## Parcours cibles MVP
 1. Ecran Chat: question utilisateur, reponse structuree 3 sections.
 2. Bloc Citations: preuves source visibles et compréhensibles.

@@ -19,7 +19,7 @@ Demarrer en local sans bloquer sur l'hebergement.
    copy .env.example .env
 
 ## Lancement
-python -m uvicorn app.main:app --reload
+python -m uvicorn app.main:app --reload --env-file .env
 
 Note:
 - Si vous installez hors venv, Windows peut afficher des warnings "script not on PATH".
@@ -61,6 +61,15 @@ create table if not exists chunks (
 - GET /v1/demo-response
 - POST /v1/retrieval/search
 - POST /v1/assistant/answer
+
+## Traitement PDF (incrément initial)
+- `app/document_processing.py` extrait le texte des PDF et produit des chunks indépendants par page, avec numéro de page et index du chunk.
+- Les limites par défaut sont de 1 200 caractères par chunk avec 160 caractères de recouvrement ; elles sont configurables par appel.
+- Les PDF invalides, vides, protégés ou sans texte extractible sont rejetés avec une erreur explicite. Les scans nécessitent une étape OCR, non incluse dans cet incrément.
+- Ce module n'est pas encore exposé par l'API et ne persiste ni fichiers ni chunks. Son intégration attend l'authentification, les métadonnées de document et le stockage objet.
+- `app/embeddings.py` fournit un adaptateur local FastEmbed, configuré par `FASTEMBED_MODEL`. Le modèle initial est multilingue et produit des vecteurs de 384 dimensions ; il est téléchargé au premier lancement puis exécuté localement, sans clé ni facturation par requête.
+- Le fournisseur du LLM de génération reste à choisir et est indépendant du provider d'embeddings.
+- Les embeddings ne sont pas encore persistés ni utilisés pour le retrieval. Ne pas activer la lecture anonyme Supabase pour des documents étudiants.
 
 ## Contrats v1
 - metadata: app/schemas.py -> ChunkMetadata

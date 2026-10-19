@@ -77,6 +77,7 @@
 - Feature 5.1.1: Explication de notions
 - Feature 5.1.2: Résumés de cours
 - Feature 5.1.3: Quiz de révision
+- Feature 5.1.4: Espace de cours généraux, indépendant des projets, pour les révisions et le contexte interprojet ([spec](../docs/feature-5.1.4-cours-generaux-transversal.md))
 
 ### Epic 5.2 - Aide à la production de projet
 - Feature 5.2.1: Structuration concept/problématique
@@ -123,3 +124,61 @@
 - Lot/Batch 5 dépend de Lot/Batch 4.
 - Lot/Batch 6 dépend de Lot/Batch 4 et 5.
 - Lot/Batch 7 dépend de Lot/Batch 4, 5 et 6.
+
+## Sequence d'execution du MVP large
+
+Les lots existants sont le decoupage produit. La sequence ci-dessous les rend executables et ajoute les gates de livraison manquants. Le prototype frontend actuel ne compte pas comme une feature terminee tant qu'il n'est pas branche au backend et aux donnees persistantes.
+
+### Etape A - Verrouiller les decisions d'execution
+- Confirmer le fournisseur LLM, les modeles generation/embeddings et les limites de cout.
+- Confirmer l'authentification, la retention/suppression et les formats/tailles de fichiers.
+- Confirmer le perimetre OAuth Drive : dossier autorise, import initial, synchronisation et revocation.
+- Sortie : criteres d'acceptation et contrats API versionnes ; aucune cle ou donnee sensible dans le depot.
+
+### Etape B - Socle applicatif et donnees (Lots 2 et 6)
+- Implementer authentification et autorisation par compte/projet.
+- Persister comptes, projets, documents, conversations et metadonnees dans Supabase ; stocker les fichiers dans Supabase Storage.
+- Activer pgvector, migrations, contraintes d'acces/RLS et configuration des environnements.
+- Ajouter CI backend/frontend, tests d'integration et environnements dev/staging.
+- Sortie : donnees isolees entre comptes, migrations reproductibles et pipeline CI vert.
+
+### Etape C - Ingestion documentaire (Lot 3)
+- Upload PDF : validation, extraction texte page par page, chunks avec provenance/page, stockage objet et etat d'indexation.
+- Traiter les PDF sans texte ; ajouter OCR aux scans simples et exposer clairement les echecs.
+- Integrer Google Drive avec OAuth, choix du dossier, import incremental, suppression/revocation et deduplication.
+- Sortie : un document suit upload/import -> extraction -> chunks persistes, avec etat consultable et tests bout-en-bout.
+
+### Etape D - RAG et assistant LLM (Lot 4)
+- Generer et persister les embeddings ; implementer recherche vectorielle top-k avec filtres de proprietaire, portee, projet, source et localite.
+- Appeler le LLM via une interface fournisseur, avec prompt pedagogique, limites de contexte, timeouts et controle des couts.
+- Produire le schema versionne cours / regle generale / source locale, citations vers les chunks et reponse prudente sans source.
+- Ajouter un jeu d'evaluation golden pour retrieval, citations, qualite et latence.
+- Sortie : un PDF importe peut justifier une reponse du LLM par des citations exactes ; les acces non autorises ne retournent aucun extrait.
+
+### Etape E - Parcours pedagogiques (Lot 5)
+- Revisions et syntheses depuis les cours generaux, meme sans projet actif.
+- Selection explicite de cours generaux dans un projet et memoire/historique de projet.
+- Aide a la problematique, au concept, a la logique spatiale et plan d'amelioration iteratif.
+- Generation d'exercices/quiz, correction guidee et progression par niveau.
+- Sortie : parcours valides avec etudiants, contenu source affiche et resultats persistes selon le compte.
+
+### Etape F - Integration frontend (Lot 6)
+- Remplacer les donnees et actions de demo par les endpoints du contrat.
+- Couvrir connexion, projets, bibliotheque, upload/Drive, etats d'indexation, chat/citations, historique et parcours pedagogiques.
+- Verifier accessibilite, mobile, erreurs, chargement, etat vide et reauthentification.
+- Sortie : tests de parcours front-back automatises et validation UX sur desktop/mobile.
+
+### Etape G - Release MVP (Lots 2 et 6)
+- Deployer staging puis production web/API ; configurer domaine HTTPS, secrets, migrations et sauvegardes.
+- Ajouter logs, metriques, alertes, suivi cout/latence, runbook et rollback teste.
+- Verifier SLO ADR-001, securite, tests QE et validation PM/PO avant ouverture aux etudiants.
+- Sortie : gate DevEx/QE/PM-PO validee et release exploitable.
+
+### Etape H - Extensions hors MVP (Lot 7)
+- Ingestion des corpus PLU/normes, versioning reglementaire et applicabilite geographique.
+- Ne demarre qu'apres validation du MVP et du pipeline de provenance.
+
+### Premier increment technique selectionne
+- Lot 3.1.3 : extraction PDF textuelle page par page et decoupage en chunks avec numero de page.
+- Cette bibliotheque de traitement est testee avant son exposition par API ; upload public et persistance attendent l'authentification, le stockage et le contrat de document du Lot 2.
+- Criteres : PDF texte valide -> chunks non vides rattaches a une page ; PDF invalide, vide ou sans texte -> erreur explicite ; taille et recouvrement des chunks valides.
