@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   ArrowDownLeft,
   ArrowLeft,
@@ -16,6 +16,7 @@ import {
   HardDriveDownload,
   LayoutGrid,
   LibraryBig,
+  LogOut,
   Menu,
   MessageSquareText,
   MoreHorizontal,
@@ -27,6 +28,10 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import type { Session } from "@supabase/supabase-js";
+
+import AuthScreen from "./AuthScreen";
+import { supabase } from "./supabase";
 
 const assistantPortrait = new URL("../../docs/image.png", import.meta.url).href;
 
@@ -184,7 +189,7 @@ function ProjectIcon({ kind }: { kind: Project["files"][number]["icon"] }) {
   return <FileText size={18} />;
 }
 
-function App() {
+function WorkspaceApp({ userEmail, onSignOut }: { userEmail: string; onSignOut: () => void }) {
   const [projects, setProjects] = useState(starterProjects);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [showCourseLibrary, setShowCourseLibrary] = useState(false);
@@ -381,8 +386,8 @@ function App() {
         <div className="topbar-right">
           <span className="demo-pill"><span /> MODE DÉMONSTRATION</span>
           <button className="help-button" type="button" onClick={() => showToast("Centre d’aide : bientôt disponible")} aria-label="Aide"><CircleHelp size={18} /></button>
-          <button className="profile-chip" type="button" onClick={() => showToast("Profil de démonstration · Jules Dubrun")}>
-            <span className="profile-avatar">JD</span><span className="profile-name">Jules Dubrun</span><ChevronDown size={15} />
+          <button className="profile-chip authenticated-profile" type="button" onClick={onSignOut} aria-label={`Se déconnecter de ${userEmail}`} title={userEmail}>
+            <span className="profile-avatar">{userEmail.slice(0, 1).toUpperCase()}</span><span className="profile-name">{userEmail}</span><LogOut size={15} />
           </button>
           {activeProject && <button className="mobile-menu-button" type="button" onClick={() => setMobileNavOpen((value) => !value)} aria-label="Ouvrir le menu"><Menu size={20} /></button>}
         </div>
@@ -750,6 +755,48 @@ function CreateProjectDialog({ name, type, onName, onType, onClose, onSubmit }: 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><div className="modal-header"><div><span className="modal-eyebrow">NOUVEL ESPACE DE TRAVAIL</span><h2 id="create-title">Donne forme à une idée.</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="Fermer"><X size={19} /></button></div><p className="modal-copy">Chaque projet garde ses propres documents, conversations et notes.</p><form onSubmit={onSubmit}><label className="form-field"><span>Nom du projet</span><input autoFocus value={name} onChange={(event) => onName(event.target.value)} placeholder="Ex. Maison de quartier" required maxLength={80} /></label><label className="form-field"><span>Type de projet</span><select value={type} onChange={(event) => onType(event.target.value)}><option>Projet d’architecture</option><option>Logement collectif</option><option>Équipement public</option><option>Réhabilitation</option><option>Projet libre</option></select></label><div className="modal-notice"><Sparkles size={16} /><span>Ce projet sera créé dans la démonstration locale ; il ne sera pas sauvegardé après fermeture.</span></div><div className="modal-actions"><button className="secondary-button" type="button" onClick={onClose}>Annuler</button><button className="primary-button" type="submit" disabled={!name.trim()}>Créer le projet <ArrowRight size={15} /></button></div></form></section></div>
   );
+}
+
+function App() {
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client) {
+      setSession(null);
+      return;
+    }
+
+    const { data } = client.auth.onAuthStateChange((event, nextSession) => {
+      setSession(nextSession);
+      if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
+    });
+    void client.auth.getSession().then(({ data: result, error }) => {
+      if (error) {
+        setSession(null);
+        return;
+      }
+      setSession(result.session);
+    });
+
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  if (!supabase) return <AuthScreen />;
+  if (session === undefined) return <main className="auth-loading" role="status">Chargement de ton espace…</main>;
+  if (!session) return <AuthScreen />;
+  if (passwordRecovery) {
+    return <AuthScreen initialMode="update-password" onRecoveryComplete={() => setPasswordRecovery(false)} />;
+  }
+
+  async function signOut() {
+    if (!supabase) return;
+    const { error } = await supabase.auth.signOut();
+    if (!error) setSession(null);
+  }
+
+  return <WorkspaceApp userEmail={session.user.email ?? "Compte étudiant"} onSignOut={signOut} />;
 }
 
 export default App;

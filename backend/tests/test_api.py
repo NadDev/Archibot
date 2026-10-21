@@ -76,6 +76,21 @@ def test_health() -> None:
     assert response.json()["status"] == "ok"
 
 
+def test_api_allows_configured_frontend_preflight() -> None:
+    response = client.options(
+        "/v1/retrieval/search",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert "authorization" in response.headers["access-control-allow-headers"].lower()
+
+
 def test_retrieval_requires_authentication() -> None:
     app.dependency_overrides.clear()
 

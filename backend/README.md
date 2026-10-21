@@ -32,8 +32,13 @@ Les endpoints de retrieval, ingestion et assistant exigent un bearer token emis 
 - SUPABASE_URL
  - SUPABASE_PUBLISHABLE_KEY (cle publishable, jamais une cle service dans le frontend)
 - ARCHIBOT_CHUNKS_TABLE (optionnel, defaut: chunks)
+- ARCHIBOT_CORS_ORIGINS (origines frontend autorisees, separees par des virgules)
 
  Sans cette configuration, `/health` et `/v1/demo-response` restent disponibles, mais les endpoints proteges repondent 503. Un bearer absent ou invalide est refuse.
+
+Pour le frontend local, autoriser `http://localhost:5173` et `http://127.0.0.1:5173`. En production, remplacer ces valeurs par les origines HTTPS exactes du frontend ; ne pas utiliser `*`.
+
+Dans Supabase Auth, l'email est actif et la confirmation email est actuellement requise. Configurer l'URL du site et les URL de redirection locales/de production. Le formulaire impose 12 caracteres minimum ; aligner aussi la longueur minimale dans les parametres Password d'Auth. Configurer SMTP avant l'ouverture a de vrais utilisateurs pour la delivrabilite des confirmations et des resets.
 
  ### Perimetres de donnees
  La table privee `chunks` contient au minimum:

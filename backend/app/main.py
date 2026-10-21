@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from .auth import AuthenticatedUser, get_current_user
 from .chunk_store import InMemoryChunkStore, SupabaseChunkStore
@@ -23,6 +24,13 @@ from .schemas import (
 
 app = FastAPI(title="Archibot API", version="0.1.0")
 settings = get_settings()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(settings.cors_origins),
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 
 _memory_chunk_stores: dict[str, InMemoryChunkStore] = {}
