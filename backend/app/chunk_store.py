@@ -6,25 +6,44 @@ from typing import Iterable, List
 from supabase import Client, create_client
 
 from .config import Settings
-from .schemas import ChunkMetadata, SourceType
+from .schemas import ChunkMetadata, ChunkVisibility, SourceType
 
 
 class ChunkStore:
-    def list_chunks(self, project_id: str, locality: str | None = None) -> List[tuple[str, ChunkMetadata]]:
+    def list_chunks(
+        self,
+        project_id: str,
+        owner_id: str,
+        locality: str | None = None,
+    ) -> List[tuple[str, ChunkMetadata]]:
         raise NotImplementedError
 
-    def add_chunks(self, chunks: List[tuple[str, ChunkMetadata]]) -> int:
+    def add_chunks(self, chunks: List[tuple[str, ChunkMetadata]], owner_id: str) -> int:
         raise NotImplementedError
 
 
 class InMemoryChunkStore(ChunkStore):
-    def __init__(self, chunks: Iterable[tuple[str, ChunkMetadata]]) -> None:
-        self._chunks = list(chunks)
+    def __init__(
+        self,
+        chunks: Iterable[tuple[str, ChunkMetadata]],
+        default_owner_id: str = "demo-user",
+    ) -> None:
+        self._chunks = [
+            (text, metadata, None if metadata.visibility == ChunkVisibility.SHARED else default_owner_id)
+            for text, metadata in chunks
+        ]
 
-    def list_chunks(self, project_id: str, locality: str | None = None) -> List[tuple[str, ChunkMetadata]]:
+    def list_chunks(
+        self,
+        project_id: str,
+        owner_id: str,
+        locality: str | None = None,
+    ) -> List[tuple[str, ChunkMetadata]]:
         result: list[tuple[str, ChunkMetadata]] = []
-        for text, metadata in self._chunks:
-            if metadata.project_id != project_id:
+        for text, metadata, chunk_owner_id in self._chunks:
+            if metadata.visibility == ChunkVisibility.SHARED:
+                pass
+            elif chunk_owner_id != owner_id or metadata.project_id != project_id:
                 continue
             if (
                 locality
@@ -36,58 +55,88 @@ class InMemoryChunkStore(ChunkStore):
             result.append((text, metadata))
         return result
 
-    def add_chunks(self, chunks: List[tuple[str, ChunkMetadata]]) -> int:
-        self._chunks.extend(chunks)
+    def add_chunks(self, chunks: List[tuple[str, ChunkMetadata]], owner_id: str) -> int:
+        if any(metadata.visibility != ChunkVisibility.PRIVATE for _, metadata in chunks):
+            raise ValueError("Only private chunks can be ingested through the user API.")
+        self._chunks.extend((text, metadata, owner_id) for text, metadata in chunks)
         return len(chunks)
 
 
 class SupabaseChunkStore(ChunkStore):
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, access_token: str) -> None:
         self._table = settings.chunks_table
         self._client: Client = create_client(
             settings.supabase_url or "",
             settings.supabase_publishable_key or "",
         )
+        self._client.postgrest.auth(access_token)
 
-    def list_chunks(self, project_id: str, locality: str | None = None) -> List[tuple[str, ChunkMetadata]]:
-        try:
-            response = (
-                self._client.table(self._table)
-                .select("text,source_type,source_id,project_id,doc_version,locality,ingested_at")
-                .eq("project_id", project_id)
-                .execute()
+    def list_chunks(
+        self,
+        project_id: str,
+        owner_id: str,
+        locality: str | None = None,
+    ) -> List[tuple[str, ChunkMetadata]]:
+        private_response = (
+            self._client.table(self._table)
+            .select("text,source_type,source_id,project_id,doc_version,locality,ingested_at")
+            .eq("project_id", project_id)
+            .eq("owner_id", owner_id)
+            .execute()
+        )
+        shared_response = (
+            self._client.table("architecture_knowledge_chunks")
+            .select("text,source_id,doc_version,locality,ingested_at")
+            .execute()
+        )
+
+        result = [
+            (row["text"], self._metadata(row, ChunkVisibility.PRIVATE))
+            for row in (private_response.data or [])
+        ]
+        result.extend(
+            (row["text"], self._metadata(row, ChunkVisibility.SHARED))
+            for row in (shared_response.data or [])
+        )
+        return [
+            (text, metadata)
+            for text, metadata in result
+            if not (
+                locality
+                and metadata.source_type == SourceType.LOCAL_REGULATION
+                and metadata.locality
+                and metadata.locality.lower() != locality.lower()
             )
-            rows = response.data or []
-        except Exception:
-            # Early Sprint 1 fallback when table/RLS is not fully configured yet.
-            return []
+        ]
 
-        result: list[tuple[str, ChunkMetadata]] = []
-        for row in rows:
-            source_type = SourceType(row["source_type"])
-            row_locality = row.get("locality")
-            if source_type == SourceType.LOCAL_REGULATION and locality and row_locality:
-                if row_locality.lower() != locality.lower():
-                    continue
+    @staticmethod
+    def _metadata(row: dict[str, object], visibility: ChunkVisibility) -> ChunkMetadata:
+        if visibility == ChunkVisibility.SHARED:
+            source_type = SourceType.GENERAL
+            project_id = "architecture-global"
+        else:
+            source_type = SourceType(str(row["source_type"]))
+            project_id = str(row["project_id"])
 
-            ingested_at_raw = row.get("ingested_at")
-            if isinstance(ingested_at_raw, str):
-                ingested_at = datetime.fromisoformat(ingested_at_raw.replace("Z", "+00:00"))
-            else:
-                ingested_at = datetime.now()
+        ingested_at_raw = row.get("ingested_at")
+        if isinstance(ingested_at_raw, str):
+            ingested_at = datetime.fromisoformat(ingested_at_raw.replace("Z", "+00:00"))
+        else:
+            ingested_at = datetime.now()
 
-            metadata = ChunkMetadata(
-                source_type=source_type,
-                source_id=row["source_id"],
-                project_id=row["project_id"],
-                doc_version=row["doc_version"],
-                locality=row_locality,
-                ingested_at=ingested_at,
-            )
-            result.append((row["text"], metadata))
-        return result
+        return ChunkMetadata(
+            source_type=source_type,
+            source_id=str(row["source_id"]),
+            project_id=project_id,
+            doc_version=str(row["doc_version"]),
+            locality=str(row["locality"]) if row.get("locality") is not None else None,
+            ingested_at=ingested_at,
+            visibility=visibility,
+        )
 
-    def add_chunks(self, chunks: List[tuple[str, ChunkMetadata]]) -> int:
+    def add_chunks(self, chunks: List[tuple[str, ChunkMetadata]], owner_id: str) -> int:
+        if any(metadata.visibility != ChunkVisibility.PRIVATE for _, metadata in chunks):
+            raise ValueError("Only private chunks can be ingested through the user API.")
         payload = []
         for text, metadata in chunks:
             payload.append(
@@ -95,6 +144,7 @@ class SupabaseChunkStore(ChunkStore):
                     "text": text,
                     "source_type": metadata.source_type.value,
                     "source_id": metadata.source_id,
+                    "owner_id": owner_id,
                     "project_id": metadata.project_id,
                     "doc_version": metadata.doc_version,
                     "locality": metadata.locality,
@@ -104,14 +154,3 @@ class SupabaseChunkStore(ChunkStore):
 
         self._client.table(self._table).insert(payload).execute()
         return len(payload)
-
-
-
-def build_chunk_store(settings: Settings, demo_chunks: Iterable[tuple[str, ChunkMetadata]]) -> ChunkStore:
-    if settings.supabase_url and settings.supabase_publishable_key:
-        try:
-            return SupabaseChunkStore(settings)
-        except Exception:
-            # Keep local development unblocked if Supabase credentials are not API-compatible.
-            return InMemoryChunkStore(demo_chunks)
-    return InMemoryChunkStore(demo_chunks)

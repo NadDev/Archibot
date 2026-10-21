@@ -13,6 +13,11 @@ class SourceType(str, Enum):
     LOCAL_REGULATION = "local_regulation"
 
 
+class ChunkVisibility(str, Enum):
+    PRIVATE = "private"
+    SHARED = "shared"
+
+
 class ChunkMetadata(BaseModel):
     source_type: SourceType
     source_id: str = Field(min_length=1)
@@ -20,6 +25,7 @@ class ChunkMetadata(BaseModel):
     doc_version: str = Field(min_length=1)
     locality: Optional[str] = None
     ingested_at: datetime
+    visibility: ChunkVisibility = ChunkVisibility.PRIVATE
 
 
 class Citation(BaseModel):

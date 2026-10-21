@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 
-from .chunk_store import build_chunk_store
+from .auth import AuthenticatedUser, get_current_user
+from .chunk_store import InMemoryChunkStore, SupabaseChunkStore
 from .config import get_settings
 from .retrieval import retrieve_chunks
 from .schemas import (
@@ -12,7 +13,6 @@ from .schemas import (
     IngestRequest,
     IngestResponse,
     AssistantResponse,
-    ChunkMetadata,
     Citation,
     ResponseSection,
     RetrievedChunk,
@@ -25,54 +25,15 @@ app = FastAPI(title="Archibot API", version="0.1.0")
 settings = get_settings()
 
 
-DEMO_CHUNKS: list[tuple[str, ChunkMetadata]] = [
-    (
-        "Le plan masse organise les volumes et les retraits selon le contexte du site.",
-        ChunkMetadata(
-            source_type=SourceType.COURSE,
-            source_id="course-archi-01",
-            project_id="demo-project",
-            doc_version="v1",
-            locality=None,
-            ingested_at=datetime(2026, 9, 28, tzinfo=UTC),
-        ),
-    ),
-    (
-        "En regle generale, la relation site-programme-usages doit rester coherente.",
-        ChunkMetadata(
-            source_type=SourceType.GENERAL,
-            source_id="general-knowledge-01",
-            project_id="demo-project",
-            doc_version="v1",
-            locality=None,
-            ingested_at=datetime(2026, 9, 28, tzinfo=UTC),
-        ),
-    ),
-    (
-        "Le PLU de Lyon impose des hauteurs maximales selon la zone UAb.",
-        ChunkMetadata(
-            source_type=SourceType.LOCAL_REGULATION,
-            source_id="plu-lyon-uab",
-            project_id="demo-project",
-            doc_version="v1",
-            locality="lyon",
-            ingested_at=datetime(2026, 9, 28, tzinfo=UTC),
-        ),
-    ),
-    (
-        "Le PLU de Nantes fixe des regles d'implantation en limite separative.",
-        ChunkMetadata(
-            source_type=SourceType.LOCAL_REGULATION,
-            source_id="plu-nantes-limite",
-            project_id="demo-project",
-            doc_version="v1",
-            locality="nantes",
-            ingested_at=datetime(2026, 9, 28, tzinfo=UTC),
-        ),
-    ),
-]
+_memory_chunk_stores: dict[str, InMemoryChunkStore] = {}
 
-chunk_store = build_chunk_store(settings=settings, demo_chunks=DEMO_CHUNKS)
+
+def _chunk_store_for(user: AuthenticatedUser) -> InMemoryChunkStore | SupabaseChunkStore:
+    if settings.supabase_url and settings.supabase_publishable_key:
+        return SupabaseChunkStore(settings, access_token=user.access_token)
+    if user.id not in _memory_chunk_stores:
+        _memory_chunk_stores[user.id] = InMemoryChunkStore([])
+    return _memory_chunk_stores[user.id]
 
 
 @app.get("/health")
@@ -108,17 +69,29 @@ def demo_response() -> AssistantResponse:
 
 
 @app.post("/v1/retrieval/search", response_model=RetrievalResponse)
-def retrieval_search(query: RetrievalQuery) -> RetrievalResponse:
-    chunks = chunk_store.list_chunks(project_id=query.project_id, locality=query.locality)
+def retrieval_search(
+    query: RetrievalQuery,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> RetrievalResponse:
+    chunks = _chunk_store_for(user).list_chunks(
+        project_id=query.project_id,
+        owner_id=user.id,
+        locality=query.locality,
+    )
     items = retrieve_chunks(query=query, chunks=chunks)
     return RetrievalResponse(total=len(items), items=items)
 
 
 @app.post("/v1/ingestion/chunks", response_model=IngestResponse)
-def ingestion_chunks(payload: IngestRequest) -> IngestResponse:
+def ingestion_chunks(
+    payload: IngestRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> IngestResponse:
     chunks = [(chunk.text, chunk.metadata) for chunk in payload.chunks]
+    if any(chunk.metadata.visibility.value != "private" for chunk in payload.chunks):
+        raise HTTPException(status_code=403, detail="User ingestion is limited to private chunks.")
     try:
-        inserted = chunk_store.add_chunks(chunks)
+        inserted = _chunk_store_for(user).add_chunks(chunks, owner_id=user.id)
     except Exception as exc:
         raise HTTPException(
             status_code=500,
@@ -135,8 +108,15 @@ def _first_by_source(items: list[RetrievedChunk], source_type: SourceType) -> Re
 
 
 @app.post("/v1/assistant/answer", response_model=AssistantResponse)
-def assistant_answer(request: AskRequest) -> AssistantResponse:
-    chunks = chunk_store.list_chunks(project_id=request.project_id, locality=request.locality)
+def assistant_answer(
+    request: AskRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AssistantResponse:
+    chunks = _chunk_store_for(user).list_chunks(
+        project_id=request.project_id,
+        owner_id=user.id,
+        locality=request.locality,
+    )
     items = retrieve_chunks(
         query=RetrievalQuery(
             question=request.question,

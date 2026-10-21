@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Iterable, List
 
-from .schemas import ChunkMetadata, RetrievedChunk, RetrievalQuery, SourceType
+from .schemas import ChunkMetadata, ChunkVisibility, RetrievedChunk, RetrievalQuery, SourceType
 
 
 WORD_RE = re.compile(r"[a-zA-Z0-9_]+")
@@ -56,7 +56,7 @@ def retrieve_chunks(
 ) -> List[RetrievedChunk]:
     scored: list[RetrievedChunk] = []
     for chunk_text, metadata in chunks:
-        if metadata.project_id != query.project_id:
+        if metadata.visibility != ChunkVisibility.SHARED and metadata.project_id != query.project_id:
             continue
         if not _locality_match(metadata, query.locality):
             continue

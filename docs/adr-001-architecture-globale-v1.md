@@ -107,6 +107,7 @@ Valides par PM/PO:
 - Frontend: F2 (React + Vite + TypeScript + Tailwind)
 - Backend: B1 (FastAPI + worker async)
 - Data layer: D1 (Supabase: Postgres + Storage + pgvector)
+- Donnees RAG: cours, documents et projets prives a un proprietaire sans partage ; corpus d'architecture generale separe, lisible par les comptes authentifies et alimentable par l'administration uniquement.
 - Embeddings: execution locale avec FastEmbed ; modele multilingue initial `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384 dimensions), a evaluer sur le corpus Archibot.
 - LLM de generation: fournisseur et modele a choisir ulterieurement ; independant du provider d'embeddings.
 - Retention: R2 (politique stricte, logs courts)

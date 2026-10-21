@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from app.retrieval import retrieve_chunks
-from app.schemas import ChunkMetadata, RetrievalQuery, SourceType
+from app.schemas import ChunkMetadata, ChunkVisibility, RetrievalQuery, SourceType
 
 
 def _chunk(text: str, source_type: SourceType, locality: str | None) -> tuple[str, ChunkMetadata]:
@@ -75,3 +75,24 @@ def test_retrieval_applies_min_score_and_orders_results() -> None:
     assert len(result) >= 1
     assert result[0].metadata.source_type == SourceType.LOCAL_REGULATION
     assert all(item.score >= 0.2 for item in result)
+
+
+def test_shared_architecture_chunk_is_visible_across_projects() -> None:
+    shared_chunk = (
+        "La lumière naturelle structure la perception des espaces.",
+        ChunkMetadata(
+            source_type=SourceType.GENERAL,
+            source_id="architecture-light",
+            project_id="architecture-global",
+            doc_version="v1",
+            ingested_at=datetime(2026, 10, 21, tzinfo=UTC),
+            visibility=ChunkVisibility.SHARED,
+        ),
+    )
+
+    results = retrieve_chunks(
+        RetrievalQuery(question="lumière naturelle espaces", project_id="unrelated-project"),
+        [shared_chunk],
+    )
+
+    assert [item.metadata.source_id for item in results] == ["architecture-light"]

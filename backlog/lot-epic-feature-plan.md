@@ -184,8 +184,8 @@ Les lots existants sont le decoupage produit. La sequence ci-dessous les rend ex
 - Criteres : PDF texte valide -> chunks non vides rattaches a une page ; PDF invalide, vide ou sans texte -> erreur explicite ; taille et recouvrement des chunks valides.
 
 ### Prochaine etape technique a reprendre
-- Priorite : securiser l'isolation des donnees Supabase avant toute persistance ou recherche de chunks. `backend/sql/chunks.sql` contient encore une policy temporaire qui autorise `SELECT` a `anon` avec `using (true)`, et la table ne porte pas encore de relation fiable avec le proprietaire du projet.
-- Definir le modele d'appartenance des projets et documents, puis appliquer des policies RLS limitees aux utilisateurs authentifies et aux projets auxquels ils ont acces. Retirer la policy de smoke test anonyme ; ne jamais exposer la cle service dans le frontend.
-- Ajouter des tests d'integration prouvant qu'un utilisateur anonyme est refuse, qu'un utilisateur autorise n'accede qu'a ses projets/documents, et qu'un autre compte ne peut ni lire ni modifier ces donnees.
-- Critere de sortie : schema d'autorisation valide et tests RLS verts. Tant que ce gate n'est pas passe, ne pas activer l'upload persistant, l'indexation ni le retrieval sur des documents prives.
-- Etape suivante apres ce gate : ajouter la colonne vectorielle pgvector compatible avec le modele FastEmbed retenu, son index et une recherche top-k filtree par les droits et la portee du projet.
+ - Modele valide : projets, cours et documents prives a un seul proprietaire, sans partage entre comptes. Le corpus d'architecture generale est une table separee, en lecture pour les comptes authentifies et alimentee par l'administration.
+ - Implemente localement : bearer Supabase Auth requis pour retrieval/ingestion/assistant ; le JWT utilisateur est transmis a PostgREST ; `chunks.owner_id` est force cote API et RLS le limite a `auth.uid()` ; l'API ne peut pas ecrire dans le corpus commun.
+ - Migration SQL fail-closed : les anciennes lignes sans `owner_id` restent invisibles. Il faut verifier/attribuer explicitement leurs proprietaires avant toute remise en service de donnees existantes.
+ - Reste a faire : appliquer la migration au projet Supabase, verifier la configuration des roles/grants, et executer des tests d'integration avec deux comptes Auth reels pour confirmer l'isolation et la lecture du corpus commun.
+ - Gate avant le prochain jalon : tests RLS distants verts. Ensuite seulement, poursuivre l'upload persistant, l'indexation pgvector et le retrieval top-k avec embeddings.

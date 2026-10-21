@@ -1,14 +1,128 @@
+from datetime import UTC, datetime
+
+import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.auth import AuthenticatedUser, get_current_user
+from app.chunk_store import InMemoryChunkStore
+from app.main import _memory_chunk_stores, app
+from app.schemas import ChunkMetadata, SourceType
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def authenticate_test_client():
+    demo_chunks = [
+        (
+            "Le plan masse organise les volumes et les retraits selon le contexte du site.",
+            ChunkMetadata(
+                source_type=SourceType.COURSE,
+                source_id="course-archi-01",
+                project_id="demo-project",
+                doc_version="v1",
+                ingested_at=datetime(2026, 9, 28, tzinfo=UTC),
+            ),
+        ),
+        (
+            "En regle generale, la relation site-programme-usages doit rester coherente.",
+            ChunkMetadata(
+                source_type=SourceType.GENERAL,
+                source_id="general-knowledge-01",
+                project_id="demo-project",
+                doc_version="v1",
+                ingested_at=datetime(2026, 9, 28, tzinfo=UTC),
+            ),
+        ),
+        (
+            "Le PLU de Lyon impose des hauteurs maximales selon la zone UAb.",
+            ChunkMetadata(
+                source_type=SourceType.LOCAL_REGULATION,
+                source_id="plu-lyon-uab",
+                project_id="demo-project",
+                doc_version="v1",
+                locality="lyon",
+                ingested_at=datetime(2026, 9, 28, tzinfo=UTC),
+            ),
+        ),
+        (
+            "Le PLU de Nantes fixe des regles d'implantation en limite separative.",
+            ChunkMetadata(
+                source_type=SourceType.LOCAL_REGULATION,
+                source_id="plu-nantes-limite",
+                project_id="demo-project",
+                doc_version="v1",
+                locality="nantes",
+                ingested_at=datetime(2026, 9, 28, tzinfo=UTC),
+            ),
+        ),
+    ]
+    _memory_chunk_stores["test-user"] = InMemoryChunkStore(
+        demo_chunks,
+        default_owner_id="test-user",
+    )
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id="test-user",
+        access_token="test-token",
+    )
+    yield
+    app.dependency_overrides.clear()
+    _memory_chunk_stores.pop("test-user", None)
 
 
 def test_health() -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+def test_retrieval_requires_authentication() -> None:
+    app.dependency_overrides.clear()
+
+    response = client.post(
+        "/v1/retrieval/search",
+        json={"question": "plan masse", "project_id": "demo-project"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_private_course_chunks_are_not_visible_to_another_user() -> None:
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id="another-user",
+        access_token="another-token",
+    )
+
+    response = client.post(
+        "/v1/retrieval/search",
+        json={"question": "plan masse", "project_id": "demo-project"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 0
+
+
+def test_user_cannot_ingest_into_shared_architecture_corpus() -> None:
+    response = client.post(
+        "/v1/ingestion/chunks",
+        json={
+            "chunks": [
+                {
+                    "text": "Connaissance générale de l'architecture",
+                    "metadata": {
+                        "source_type": "general",
+                        "source_id": "architecture-general",
+                        "project_id": "architecture-global",
+                        "doc_version": "v1",
+                        "ingested_at": "2026-10-21T00:00:00Z",
+                        "visibility": "shared",
+                    },
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 403
 
 
 def test_retrieval_endpoint_returns_items() -> None:
