@@ -11,9 +11,6 @@ create table if not exists public.chunks (
 
 alter table public.chunks enable row level security;
 
--- Temporary policy for Sprint 1 smoke tests with publishable key.
+-- Keep public access closed until authenticated owner/project policies exist.
 drop policy if exists chunks_select_anon on public.chunks;
-create policy chunks_select_anon on public.chunks
-for select
-to anon
-using (true);
+revoke all privileges on table public.chunks from anon;
