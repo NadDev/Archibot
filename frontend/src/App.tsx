@@ -189,7 +189,7 @@ function ProjectIcon({ kind }: { kind: Project["files"][number]["icon"] }) {
   return <FileText size={18} />;
 }
 
-function WorkspaceApp({ displayName, userEmail, onSignOut }: { displayName: string; userEmail: string; onSignOut: () => void }) {
+function WorkspaceApp({ displayName, greetingName, userEmail, onSignOut }: { displayName: string; greetingName: string | null; userEmail: string; onSignOut: () => void }) {
   const [projects, setProjects] = useState(starterProjects);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [showCourseLibrary, setShowCourseLibrary] = useState(false);
@@ -422,6 +422,7 @@ function WorkspaceApp({ displayName, userEmail, onSignOut }: { displayName: stri
           ) : (
             <ProjectsHome
               projects={visibleProjects}
+              greetingName={greetingName}
               search={search}
               onSearch={setSearch}
               onOpen={openProject}
@@ -489,6 +490,7 @@ function WorkspaceApp({ displayName, userEmail, onSignOut }: { displayName: stri
 
 function ProjectsHome({
   projects,
+  greetingName,
   search,
   onSearch,
   onOpen,
@@ -496,6 +498,7 @@ function ProjectsHome({
   onOpenCourses,
 }: {
   projects: Project[];
+  greetingName: string | null;
   search: string;
   onSearch: (value: string) => void;
   onOpen: (id: string) => void;
@@ -507,7 +510,7 @@ function ProjectsHome({
       <div className="home-intro">
         <div className="eyebrow"><span className="eyebrow-line" /> TON ESPACE DE TRAVAIL</div>
         <div className="home-heading-row">
-          <div><h1>Bonjour Jules<span className="hello-period">.</span></h1><p>Reprends là où tu en étais, ou ouvre un nouvel atelier.</p></div>
+          <div><h1>{greetingName ? <>Bonjour {greetingName}</> : "Mon espace de travail"}<span className="hello-period">.</span></h1><p>Reprends là où tu en étais, ou ouvre un nouvel atelier.</p></div>
           <div className="home-actions"><button className="secondary-button" type="button" onClick={onOpenCourses}><BookOpen size={17} /> Cours généraux</button><button className="primary-button create-project-button" type="button" onClick={onCreate}><Plus size={18} /> Nouveau projet</button></div>
         </div>
         <div className="home-meta-row"><span><FolderKanban size={16} /> {projects.length} projets</span><span className="meta-divider" /><span><Clock3 size={16} /> Tes espaces restent séparés</span></div>
@@ -807,6 +810,7 @@ function App() {
   return (
     <WorkspaceApp
       displayName={displayName}
+      greetingName={firstName || null}
       userEmail={session.user.email ?? "Compte étudiant"}
       onSignOut={signOut}
     />
