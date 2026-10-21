@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   ArrowDownLeft,
   ArrowLeft,
@@ -9,6 +9,7 @@ import {
   ChevronRight,
   CircleHelp,
   Clock3,
+  Download,
   FileImage,
   FileText,
   FolderKanban,
@@ -25,6 +26,7 @@ import {
   Send,
   Settings2,
   Sparkles,
+  Trash2,
   Upload,
   X,
 } from "lucide-react";
@@ -38,7 +40,7 @@ const assistantPortrait = new URL("../../docs/image.png", import.meta.url).href;
 type Section = "chat" | "documents" | "exercises" | "notes";
 type ProjectStatus = "En cours" | "À reprendre" | "Terminé";
 type ProjectNote = { id: string; label: string; text: string; created: string; tone: "clay" | "sage" | "blue" };
-type CourseDocument = { id: string; title: string; course: string; subject: string; studyYear: string; meta: string; status: string };
+type CourseDocument = { id: string; title: string; course: string; subject: string; studyYear: string; meta: string; status: string; storagePath: string };
 type Project = {
   id: string;
   name: string;
@@ -48,107 +50,60 @@ type Project = {
   progress: number;
   location: string;
   term: string;
-  accent: string;
   summary: string;
   files: { id: string; name: string; meta: string; state: string; icon: "plan" | "pdf" | "image" }[];
   notes: ProjectNote[];
 };
+type ProjectRow = {
+  id: string;
+  name: string;
+  project_type: string;
+  status: ProjectStatus;
+  updated_at: string;
+  progress: number;
+  location: string;
+  term: string;
+  summary: string;
+};
+type CourseRow = {
+  id: string;
+  title: string;
+  course: string;
+  subject: string;
+  study_year: string;
+  storage_path: string;
+  file_size: number;
+  created_at: string;
+};
 type ChatItem = { id: number; role: "student" | "assistant"; text: string; time: string };
 
-const starterProjects: Project[] = [
-  {
-    id: "toits-verts",
-    name: "Les Toits Verts",
-    type: "Logement collectif",
-    status: "En cours",
-    updated: "Modifié aujourd’hui",
-    progress: 68,
-    location: "Lyon, France",
-    term: "Semestre 2 · 2025–2026",
-    accent: "sage",
-    summary: "Imaginer un habitat collectif ouvert sur son quartier, avec une attention particulière aux circulations et à la lumière naturelle.",
-    files: [
-      { id: "a1", name: "Plan_RDC_v04.pdf", meta: "Plan · 2,4 Mo", state: "Indexé · 12 pages", icon: "plan" },
-      { id: "a2", name: "Structures_II_notes.pdf", meta: "Cours · 840 Ko", state: "Indexé · 8 pages", icon: "pdf" },
-      { id: "a3", name: "Maquette_sud.jpg", meta: "Image · 3,1 Mo", state: "À analyser", icon: "image" },
-    ],
-    notes: [
-      { id: "n1", label: "À EXPLORER", text: "Comparer les portées en zone C avec une trame secondaire.", created: "Ajoutée aujourd’hui · par Jules", tone: "clay" },
-      { id: "n2", label: "PISTE DE CONCEPTION", text: "Renforcer la lumière naturelle au sud sans perdre l’intimité des logements.", created: "Ajoutée hier · par Jules", tone: "sage" },
-      { id: "n3", label: "DÉCISION À PRENDRE", text: "Bois lamellé-collé ou structure acier ? Comparer les deux avant la prochaine séance.", created: "Ajoutée mardi · par Jules", tone: "blue" },
-    ],
-  },
-  {
-    id: "pavillon-campus",
-    name: "Pavillon du campus",
-    type: "Équipement public",
-    status: "En cours",
-    updated: "Modifié hier",
-    progress: 34,
-    location: "Paris, France",
-    term: "Atelier de projet · 2025–2026",
-    accent: "clay",
-    summary: "Un petit lieu de rencontre étudiant, entre espace de travail partagé et extension du jardin du campus.",
-    files: [
-      { id: "b1", name: "Programme_pavillon.pdf", meta: "Brief · 1,2 Mo", state: "Indexé · 6 pages", icon: "pdf" },
-      { id: "b2", name: "Croquis_implantation.png", meta: "Image · 2,0 Mo", state: "Indexé · 1 page", icon: "image" },
-    ],
-    notes: [
-      { id: "p1", label: "À EXPLORER", text: "Tester une entrée visible depuis le chemin principal du campus.", created: "Ajoutée hier · par Jules", tone: "clay" },
-      { id: "p2", label: "PISTE DE CONCEPTION", text: "Prolonger le jardin dans le pavillon avec une assise en seuil.", created: "Ajoutée lundi · par Jules", tone: "sage" },
-    ],
-  },
-  {
-    id: "maison-des-assos",
-    name: "Maison des associations",
-    type: "Réhabilitation",
-    status: "À reprendre",
-    updated: "Modifié le 3 octobre",
-    progress: 82,
-    location: "Bordeaux, France",
-    term: "Projet libre · 2025–2026",
-    accent: "blue",
-    summary: "Réhabiliter une halle existante pour accueillir des ateliers et des espaces associatifs modulables.",
-    files: [
-      { id: "c1", name: "Relevé_existant.pdf", meta: "Relevé · 4,8 Mo", state: "Indexé · 18 pages", icon: "plan" },
-      { id: "c2", name: "Pistes_matériaux.pdf", meta: "Références · 960 Ko", state: "Indexé · 7 pages", icon: "pdf" },
-    ],
-    notes: [
-      { id: "m1", label: "À CONSERVER", text: "Préserver la trame et les éléments qui racontent l’histoire de la halle.", created: "Ajoutée le 3 octobre · par Jules", tone: "sage" },
-      { id: "m2", label: "MATÉRIAUX", text: "Repérer les matériaux réemployables avant de définir les nouvelles finitions.", created: "Ajoutée le 2 octobre · par Jules", tone: "blue" },
-    ],
-  },
-];
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
+    return error.message;
+  }
+  return String(error);
+}
 
-const initialChat: ChatItem[] = [
-  {
-    id: 1,
-    role: "assistant",
-    text: "Bonjour Jules ! J’ai parcouru les documents associés à ce projet. On peut travailler sur le plan, la structure ou les ambiances. Par quoi veux-tu commencer ?",
-    time: "10:42",
-  },
-  {
-    id: 2,
-    role: "student",
-    text: "La portée dans la zone C me semble importante. Quelles pistes pourrais-je étudier ?",
-    time: "10:46",
-  },
-  {
-    id: 3,
-    role: "assistant",
-    text: "Bonne question. Une grande portée n’est pas forcément un problème, mais elle mérite d’être mise en regard du programme, de la hauteur disponible et du système structurel envisagé. Voici des pistes à vérifier pour ton projet.",
-    time: "10:46",
-  },
-];
-
-const starterGeneralCourses: CourseDocument[] = [
-  { id: "course-structures", title: "Structures II - notes de cours.pdf", course: "Structures II", subject: "Structures", studyYear: "2e année", meta: "PDF · 24 pages · Ajouté le 12 octobre", status: "Indexé · 24 pages" },
-  { id: "course-history", title: "Repères d’histoire de l’architecture.pdf", course: "Histoire de l’architecture", subject: "Histoire de l’architecture", studyYear: "1re année", meta: "PDF · 38 pages · Ajouté le 8 octobre", status: "Indexé · 38 pages" },
-  { id: "course-construction", title: "Enveloppe et matériaux - semestre 2.pdf", course: "Construction", subject: "Construction", studyYear: "2e année", meta: "PDF · 16 pages · Ajouté le 2 octobre", status: "Indexé · 16 pages" },
-];
+function getTableSetupMessage(error: unknown, tableLabel: string, sqlFile: string): string {
+  const message = getErrorMessage(error);
+  if (/PGRST205|could not find the table|schema cache|relation .* does not exist/i.test(message)) {
+    return `La configuration ${tableLabel} manque dans Supabase. Exécute backend/sql/${sqlFile} dans le SQL Editor, puis réessaie.`;
+  }
+  return message;
+}
 
 const studyYearOptions = ["1re année", "2e année", "Transversale", "Non précisée"];
 const otherSubjectOption = "__other__";
+const courseMimeTypes: Record<string, string> = {
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+};
 
 const suggestedQuestions = [
   "Comment améliorer la lumière naturelle ?",
@@ -161,6 +116,35 @@ const statusClass: Record<ProjectStatus, string> = {
   "À reprendre": "status-paused",
   Terminé: "status-done",
 };
+
+function mapProject(row: ProjectRow): Project {
+  return {
+    id: row.id,
+    name: row.name,
+    type: row.project_type,
+    status: row.status,
+    updated: `Modifié le ${new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short" }).format(new Date(row.updated_at))}`,
+    progress: row.progress,
+    location: row.location,
+    term: row.term,
+    summary: row.summary,
+    files: [],
+    notes: [],
+  };
+}
+
+function mapCourse(row: CourseRow): CourseDocument {
+  return {
+    id: row.id,
+    title: row.title,
+    course: row.course,
+    subject: row.subject,
+    studyYear: row.study_year,
+    meta: `${(row.file_size / (1024 * 1024)).toFixed(1)} Mo · Ajouté le ${new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short" }).format(new Date(row.created_at))}`,
+    status: "Stocké · non indexé",
+    storagePath: row.storage_path,
+  };
+}
 
 function ProjectArtwork({ variant = "one" }: { variant?: "one" | "two" | "three" }) {
   const shapes = {
@@ -189,12 +173,20 @@ function ProjectIcon({ kind }: { kind: Project["files"][number]["icon"] }) {
   return <FileText size={18} />;
 }
 
-function WorkspaceApp({ displayName, greetingName, userEmail, onSignOut }: { displayName: string; greetingName: string | null; userEmail: string; onSignOut: () => void }) {
-  const [projects, setProjects] = useState(starterProjects);
+function WorkspaceApp({ displayName, greetingName, userEmail, userId, onSignOut }: { displayName: string; greetingName: string | null; userEmail: string; userId: string; onSignOut: () => void }) {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [projectsError, setProjectsError] = useState("");
+  const [projectsReloadKey, setProjectsReloadKey] = useState(0);
+  const [projectSaving, setProjectSaving] = useState(false);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [showCourseLibrary, setShowCourseLibrary] = useState(false);
   const [reviewingCourseId, setReviewingCourseId] = useState<string | null>(null);
-  const [generalCourses, setGeneralCourses] = useState(starterGeneralCourses);
+  const [generalCourses, setGeneralCourses] = useState<CourseDocument[]>([]);
+  const [coursesLoading, setCoursesLoading] = useState(true);
+  const [coursesError, setCoursesError] = useState("");
+  const [coursesReloadKey, setCoursesReloadKey] = useState(0);
+  const [courseSaving, setCourseSaving] = useState(false);
   const [courseSearch, setCourseSearch] = useState("");
   const [courseSubjectFilter, setCourseSubjectFilter] = useState("all");
   const [courseYearFilter, setCourseYearFilter] = useState("all");
@@ -210,12 +202,62 @@ function WorkspaceApp({ displayName, greetingName, userEmail, onSignOut }: { dis
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [question, setQuestion] = useState("");
-  const [chat, setChat] = useState(initialChat);
-  const [chatByProject, setChatByProject] = useState<Record<string, ChatItem[]>>({ "toits-verts": initialChat });
+  const [chat, setChat] = useState<ChatItem[]>([]);
+  const [chatByProject, setChatByProject] = useState<Record<string, ChatItem[]>>({});
   const [fileSearch, setFileSearch] = useState("");
   const [showAllHistory, setShowAllHistory] = useState(false);
   const [exerciseAnswer, setExerciseAnswer] = useState("");
   const [exerciseSubmitted, setExerciseSubmitted] = useState(false);
+
+  useEffect(() => {
+    let isCurrent = true;
+    async function loadProjects() {
+      setProjectsLoading(true);
+      setProjectsError("");
+      try {
+        if (!supabase) throw new Error("La connexion à Supabase n’est pas configurée.");
+        const { data, error } = await supabase
+          .from("projects")
+          .select("id, name, project_type, status, updated_at, progress, location, term, summary")
+          .order("updated_at", { ascending: false });
+        if (error) throw error;
+        if (isCurrent) setProjects((data ?? []).map((row) => mapProject(row as ProjectRow)));
+      } catch (error) {
+        if (isCurrent) {
+          setProjectsError(getTableSetupMessage(error, "des projets", "projects.sql"));
+        }
+      } finally {
+        if (isCurrent) setProjectsLoading(false);
+      }
+    }
+    void loadProjects();
+    return () => { isCurrent = false; };
+  }, [userId, projectsReloadKey]);
+
+  useEffect(() => {
+    let isCurrent = true;
+    async function loadCourses() {
+      setCoursesLoading(true);
+      setCoursesError("");
+      try {
+        if (!supabase) throw new Error("La connexion à Supabase n’est pas configurée.");
+        const { data, error } = await supabase
+          .from("user_courses")
+          .select("id, title, course, subject, study_year, storage_path, file_size, created_at")
+          .order("created_at", { ascending: false });
+        if (error) throw error;
+        if (isCurrent) setGeneralCourses((data ?? []).map((row) => mapCourse(row as CourseRow)));
+      } catch (error) {
+        if (isCurrent) {
+          setCoursesError(getTableSetupMessage(error, "des cours personnels", "user_courses.sql"));
+        }
+      } finally {
+        if (isCurrent) setCoursesLoading(false);
+      }
+    }
+    void loadCourses();
+    return () => { isCurrent = false; };
+  }, [userId, coursesReloadKey]);
 
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? null;
   const visibleProjects = useMemo(() => projects.filter((project) =>
@@ -244,7 +286,7 @@ function WorkspaceApp({ displayName, greetingName, userEmail, onSignOut }: { dis
     setChat(chatByProject[projectId] ?? [{
       id: Date.now(),
       role: "assistant",
-      text: `Bonjour Jules ! Cet espace est dédié à « ${project?.name ?? "ton projet"} ». Ajoute tes documents ou pose une question pour commencer.`,
+      text: `Bonjour${greetingName ? ` ${greetingName}` : ""} ! Cet espace est dédié à « ${project?.name ?? "ton projet"} ». Ajoute tes documents ou pose une question pour commencer.`,
       time: "—",
     }]);
     setMobileNavOpen(false);
@@ -263,33 +305,37 @@ function WorkspaceApp({ displayName, greetingName, userEmail, onSignOut }: { dis
     setReviewingCourseId(null);
   }
 
-  function createProject(event: FormEvent<HTMLFormElement>) {
+  async function createProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const cleanedName = newName.trim();
     if (!cleanedName) return;
-    const project: Project = {
-      id: `project-${Date.now()}`,
-      name: cleanedName,
-      type: newType,
-      status: "En cours",
-      updated: "Créé à l’instant",
-      progress: 0,
-      location: "À préciser",
-      term: "Nouveau projet",
-      accent: "sage",
-      summary: "Ajoute un peu de contexte pour commencer à organiser ton travail et tes références.",
-      files: [],
-      notes: [],
-    };
-    setProjects((items) => [project, ...items]);
-    const welcome: ChatItem[] = [{ id: Date.now(), role: "assistant", text: `Bienvenue dans « ${project.name} ». Cet espace est distinct de tes autres projets.`, time: "—" }];
-    setChatByProject((items) => ({ ...items, [project.id]: welcome }));
-    setChat(welcome);
-    setNewName("");
-    setShowCreate(false);
-    setActiveProjectId(project.id);
-    setSection("chat");
-    showToast("Projet créé dans cette session de démonstration");
+    if (!supabase) {
+      showToast("La connexion à Supabase n’est pas disponible.");
+      return;
+    }
+    setProjectSaving(true);
+    try {
+      const { data, error } = await supabase.from("projects").insert({
+        name: cleanedName,
+        project_type: newType,
+      }).select("id, name, project_type, status, updated_at, progress, location, term, summary").single();
+      if (error) throw error;
+      const project = mapProject(data as ProjectRow);
+      setProjects((items) => [project, ...items]);
+      const welcome: ChatItem[] = [{ id: Date.now(), role: "assistant", text: `Bienvenue dans « ${project.name} ». Les informations du projet sont enregistrées dans ton compte.`, time: "—" }];
+      setChatByProject((items) => ({ ...items, [project.id]: welcome }));
+      setChat(welcome);
+      setNewName("");
+      setShowCreate(false);
+      setActiveProjectId(project.id);
+      setSection("chat");
+      showToast("Projet enregistré.");
+    } catch (error) {
+      const message = getErrorMessage(error);
+      showToast(`Projet non enregistré : ${message}`);
+    } finally {
+      setProjectSaving(false);
+    }
   }
 
   function addQuestion(event: FormEvent<HTMLFormElement>) {
@@ -328,28 +374,112 @@ function WorkspaceApp({ displayName, greetingName, userEmail, onSignOut }: { dis
     showToast("Fichier ajouté à la maquette uniquement — aucun envoi effectué");
   }
 
-  function addGeneralCourseFiles(files: FileList | null) {
+  async function addGeneralCourseFiles(files: FileList | null) {
     if (!files?.length) return;
+    if (!supabase) {
+      showToast("La connexion à Supabase n’est pas disponible.");
+      return;
+    }
     const subject = newCourseSubject === otherSubjectOption
       ? newCustomCourseSubject.trim() || "À classer"
       : newCourseSubject;
-    const additions = Array.from(files).map((file, index) => ({
-      id: `course-local-${Date.now()}-${index}`,
-      title: file.name,
-      course: subject,
-      subject,
-      studyYear: newCourseYear,
-      meta: `Fichier local · ${(file.size / (1024 * 1024)).toFixed(1)} Mo`,
-      status: "Sélectionné · non envoyé",
-    }));
-    setGeneralCourses((items) => [...additions, ...items]);
-    showToast("Cours ajouté à la maquette uniquement — aucun envoi effectué");
+    const additions: CourseDocument[] = [];
+    let failedUploads = 0;
+    setCourseSaving(true);
+    try {
+      for (const file of Array.from(files)) {
+        const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+        const contentType = courseMimeTypes[extension];
+        if (!contentType || file.size <= 0 || file.size > 50 * 1024 * 1024) {
+          failedUploads += 1;
+          continue;
+        }
+
+        const courseId = crypto.randomUUID();
+        const storagePath = `${userId}/${courseId}.${extension}`;
+        const { error: uploadError } = await supabase.storage
+          .from("user-courses")
+          .upload(storagePath, file, { contentType, upsert: false });
+        if (uploadError) {
+          failedUploads += 1;
+          continue;
+        }
+
+        const { data, error } = await supabase.from("user_courses").insert({
+          title: file.name,
+          course: subject,
+          subject,
+          study_year: newCourseYear,
+          storage_path: storagePath,
+          content_type: contentType,
+          file_size: file.size,
+        }).select("id, title, course, subject, study_year, storage_path, file_size, created_at").single();
+        if (error) {
+          await supabase.storage.from("user-courses").remove([storagePath]);
+          failedUploads += 1;
+          continue;
+        }
+        additions.push(mapCourse(data as CourseRow));
+      }
+      if (additions.length) setGeneralCourses((items) => [...additions, ...items]);
+      showToast(failedUploads ? `${additions.length} cours ajouté(s), ${failedUploads} échec(s).` : `${additions.length} cours ajouté(s).`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erreur inconnue";
+      showToast(`Envoi interrompu : ${message}`);
+    } finally {
+      setCourseSaving(false);
+    }
   }
 
-  function updateGeneralCourseClassification(id: string, subject: string, studyYear: string) {
+  async function updateGeneralCourseClassification(id: string, subject: string, studyYear: string) {
+    const cleanSubject = subject.trim() || "À classer";
     setGeneralCourses((items) => items.map((course) => course.id === id
-      ? { ...course, subject: subject.trim() || "À classer", studyYear }
+      ? { ...course, course: cleanSubject, subject: cleanSubject, studyYear }
       : course));
+    if (!supabase) return;
+    const { error } = await supabase.from("user_courses").update({
+      course: cleanSubject,
+      subject: cleanSubject,
+      study_year: studyYear,
+    }).eq("id", id);
+    if (error) {
+      showToast(`Classement non enregistré : ${error.message}`);
+      setCoursesReloadKey((key) => key + 1);
+    }
+  }
+
+  async function downloadGeneralCourse(id: string) {
+    const course = generalCourses.find((item) => item.id === id);
+    if (!course || !supabase) return;
+    const { data, error } = await supabase.storage.from("user-courses").download(course.storagePath);
+    if (error) {
+      showToast(`Téléchargement impossible : ${error.message}`);
+      return;
+    }
+    const url = URL.createObjectURL(data);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = course.title;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function deleteGeneralCourse(id: string) {
+    const course = generalCourses.find((item) => item.id === id);
+    if (!course || !supabase || !window.confirm(`Supprimer définitivement « ${course.title} » ?`)) return;
+    const { error: storageError } = await supabase.storage.from("user-courses").remove([course.storagePath]);
+    if (storageError) {
+      showToast(`Fichier non supprimé : ${storageError.message}`);
+      return;
+    }
+    const { error } = await supabase.from("user_courses").delete().eq("id", id);
+    if (error) {
+      showToast(`Fiche non supprimée : ${error.message}`);
+      return;
+    }
+    setGeneralCourses((items) => items.filter((item) => item.id !== id));
+    if (reviewingCourseId === id) setReviewingCourseId(null);
+    showToast("Cours supprimé.");
   }
 
   function toggleCourseContext(projectId: string, courseId: string) {
@@ -399,6 +529,9 @@ function WorkspaceApp({ displayName, greetingName, userEmail, onSignOut }: { dis
             <GeneralCoursesView
               courses={visibleGeneralCourses}
               allCourses={generalCourses}
+              loading={coursesLoading}
+              error={coursesError}
+              saving={courseSaving}
               search={courseSearch}
               subjectFilter={courseSubjectFilter}
               yearFilter={courseYearFilter}
@@ -414,20 +547,26 @@ function WorkspaceApp({ displayName, greetingName, userEmail, onSignOut }: { dis
               onNewYear={setNewCourseYear}
               onFiles={addGeneralCourseFiles}
               onSaveClassification={updateGeneralCourseClassification}
+              onDownload={downloadGeneralCourse}
+              onDelete={deleteGeneralCourse}
               onReview={setReviewingCourseId}
               onBack={openProjects}
               onExitReview={() => setReviewingCourseId(null)}
               onToast={showToast}
+              onRetry={() => setCoursesReloadKey((key) => key + 1)}
             />
           ) : (
             <ProjectsHome
               projects={visibleProjects}
               greetingName={greetingName}
+              loading={projectsLoading}
+              error={projectsError}
               search={search}
               onSearch={setSearch}
               onOpen={openProject}
               onCreate={() => setShowCreate(true)}
               onOpenCourses={openCourseLibrary}
+              onRetry={() => setProjectsReloadKey((key) => key + 1)}
             />
           )
         ) : (
@@ -480,9 +619,9 @@ function WorkspaceApp({ displayName, greetingName, userEmail, onSignOut }: { dis
         )}
       </main>
 
-      <footer className="demo-footer"><span className="demo-footer-dot" /> Contenu d’exemple uniquement <span>·</span> Aucune donnée n’est enregistrée ni envoyée</footer>
+      <footer className="demo-footer"><span className="demo-footer-dot" /> Projets enregistrés dans ton compte <span>·</span> Documents, notes et conversations encore en démonstration</footer>
 
-      {showCreate && <CreateProjectDialog name={newName} type={newType} onName={setNewName} onType={setNewType} onClose={() => setShowCreate(false)} onSubmit={createProject} />}
+      {showCreate && <CreateProjectDialog name={newName} type={newType} saving={projectSaving} onName={setNewName} onType={setNewType} onClose={() => setShowCreate(false)} onSubmit={createProject} />}
       {toast && <div className="toast-message" role="status"><Check size={16} />{toast}</div>}
     </div>
   );
@@ -491,19 +630,25 @@ function WorkspaceApp({ displayName, greetingName, userEmail, onSignOut }: { dis
 function ProjectsHome({
   projects,
   greetingName,
+  loading,
+  error,
   search,
   onSearch,
   onOpen,
   onCreate,
   onOpenCourses,
+  onRetry,
 }: {
   projects: Project[];
   greetingName: string | null;
+  loading: boolean;
+  error: string;
   search: string;
   onSearch: (value: string) => void;
   onOpen: (id: string) => void;
   onCreate: () => void;
   onOpenCourses: () => void;
+  onRetry: () => void;
 }) {
   return (
     <section className="projects-home">
@@ -513,24 +658,28 @@ function ProjectsHome({
           <div><h1>{greetingName ? <>Bonjour {greetingName}</> : "Mon espace de travail"}<span className="hello-period">.</span></h1><p>Reprends là où tu en étais, ou ouvre un nouvel atelier.</p></div>
           <div className="home-actions"><button className="secondary-button" type="button" onClick={onOpenCourses}><BookOpen size={17} /> Cours généraux</button><button className="primary-button create-project-button" type="button" onClick={onCreate}><Plus size={18} /> Nouveau projet</button></div>
         </div>
-        <div className="home-meta-row"><span><FolderKanban size={16} /> {projects.length} projets</span><span className="meta-divider" /><span><Clock3 size={16} /> Tes espaces restent séparés</span></div>
+        <div className="home-meta-row"><span><FolderKanban size={16} /> {loading ? "…" : projects.length} projets</span><span className="meta-divider" /><span><Clock3 size={16} /> Tes espaces restent séparés</span></div>
       </div>
 
       <section className="projects-section" aria-labelledby="projects-title">
         <div className="section-heading-row">
-          <div><h2 id="projects-title">Mes projets <span className="muted-count">{projects.length}</span></h2><p>Chaque projet a ses propres échanges et documents.</p></div>
+          <div><h2 id="projects-title">Mes projets <span className="muted-count">{loading ? "…" : projects.length}</span></h2><p>Tes projets sont enregistrés; les documents et échanges seront connectés ensuite.</p></div>
           <label className="search-box project-search"><Search size={17} /><input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Rechercher un projet" aria-label="Rechercher un projet" />{search && <button type="button" onClick={() => onSearch("")} aria-label="Effacer la recherche"><X size={15} /></button>}</label>
         </div>
-        {projects.length ? (
+        {loading ? (
+          <div className="empty-projects" role="status"><h3>Chargement de tes projets…</h3></div>
+        ) : error ? (
+          <div className="empty-projects" role="alert"><h3>Les projets sont indisponibles</h3><p>{error}</p><button type="button" className="text-button" onClick={onRetry}>Réessayer <ArrowRight size={15} /></button></div>
+        ) : projects.length ? (
           <div className="project-grid">
             {projects.map((project, index) => <ProjectCard key={project.id} project={project} variant={index % 3 === 0 ? "one" : index % 3 === 1 ? "two" : "three"} onOpen={() => onOpen(project.id)} />)}
             <button className="new-project-card" type="button" onClick={onCreate}><span className="new-project-icon"><Plus size={21} /></span><b>Commencer un nouveau projet</b><span>Un nouvel espace, prêt à prendre forme.</span><span className="new-project-arrow"><ArrowRight size={16} /></span></button>
           </div>
         ) : (
-          <div className="empty-projects"><span className="empty-icon"><Search size={22} /></span><h3>Aucun projet trouvé</h3><p>Essaie avec un autre nom ou crée un nouvel espace.</p><button type="button" className="text-button" onClick={onCreate}>Créer un projet <ArrowRight size={15} /></button></div>
+          <div className="empty-projects"><span className="empty-icon"><FolderKanban size={22} /></span><h3>{search ? "Aucun projet trouvé" : "Ton espace commence ici"}</h3><p>{search ? "Essaie un autre nom ou efface ta recherche." : "Clique sur « Nouveau projet », donne-lui un nom et un type. Tu pourras ensuite y organiser ton travail d’architecture; les documents, notes et conversations seront raccordés dans une prochaine étape."}</p><button type="button" className="text-button" onClick={onCreate}>{search ? "Créer un projet" : "Créer mon premier projet"} <ArrowRight size={15} /></button></div>
         )}
       </section>
-      <div className="home-bottom-note"><span className="note-sparkle"><Sparkles size={17} /></span><p><b>Un espace par idée.</b> Tes documents et tes échanges restent rattachés au projet que tu consultes.</p><span className="note-illustration" aria-hidden="true">⌁</span></div>
+      <div className="home-bottom-note"><span className="note-sparkle"><Sparkles size={17} /></span><p><b>Un espace par idée.</b> Les documents et échanges seront rattachés à chaque projet dans une prochaine étape.</p><span className="note-illustration" aria-hidden="true">⌁</span></div>
     </section>
   );
 }
@@ -557,9 +706,18 @@ function GeneralCoursesView({
   onBack,
   onExitReview,
   onToast,
+  onRetry,
+  loading,
+  error,
+  saving,
+  onDownload,
+  onDelete,
 }: {
   courses: CourseDocument[];
   allCourses: CourseDocument[];
+  loading: boolean;
+  error: string;
+  saving: boolean;
   search: string;
   subjectFilter: string;
   yearFilter: string;
@@ -573,13 +731,17 @@ function GeneralCoursesView({
   onNewSubject: (value: string) => void;
   onCustomSubject: (value: string) => void;
   onNewYear: (value: string) => void;
-  onFiles: (files: FileList | null) => void;
-  onSaveClassification: (id: string, subject: string, studyYear: string) => void;
+  onFiles: (files: FileList | null) => void | Promise<void>;
+  onSaveClassification: (id: string, subject: string, studyYear: string) => void | Promise<void>;
+  onDownload: (id: string) => void | Promise<void>;
+  onDelete: (id: string) => void | Promise<void>;
   onReview: (id: string) => void;
   onBack: () => void;
   onExitReview: () => void;
   onToast: (message: string) => void;
+  onRetry: () => void;
 }) {
+  const courseFileInput = useRef<HTMLInputElement>(null);
   const subjectOptions = Array.from(new Set([...allCourses.map((course) => course.subject), "À classer"])).sort((left, right) => left.localeCompare(right, "fr"));
 
   return (
@@ -590,21 +752,21 @@ function GeneralCoursesView({
         <div className="home-heading-row">
           <div><h1>Cours généraux<span className="hello-period">.</span></h1><p>Révise tes cours ici, indépendamment de tes projets.</p></div>
         </div>
-        <div className="home-meta-row"><span><BookOpen size={16} /> {allCourses.length} cours</span><span className="meta-divider" /><span><FolderKanban size={16} /> Utilisables dans plusieurs projets sur sélection</span></div>
+        <div className="home-meta-row"><span><BookOpen size={16} /> {loading ? "…" : allCourses.length} cours</span><span className="meta-divider" /><span><FolderKanban size={16} /> Bibliothèque privée à ton compte</span></div>
       </div>
       <div className="course-add-toolbar">
         <label className="course-field"><span>Matière du cours ajouté</span><select value={newSubject} onChange={(event) => onNewSubject(event.target.value)}>{subjectOptions.map((subject) => <option key={subject} value={subject}>{subject}</option>)}<option value={otherSubjectOption}>Autre matière…</option></select></label>
         {newSubject === otherSubjectOption && <label className="course-field"><span>Nom de la matière</span><input value={customSubject} onChange={(event) => onCustomSubject(event.target.value)} placeholder="Ex. Théorie de l’architecture" /></label>}
         <label className="course-field"><span>Année d’étude</span><select value={newYear} onChange={(event) => onNewYear(event.target.value)}>{studyYearOptions.map((year) => <option key={year} value={year}>{year}</option>)}</select></label>
-        <label className="primary-button upload-button"><Upload size={17} /> Ajouter des cours<input type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp" onChange={(event) => { onFiles(event.target.files); event.currentTarget.value = ""; }} /></label>
+        <label className="primary-button upload-button"><Upload size={17} /> {saving ? "Envoi…" : "Ajouter des cours"}<input ref={courseFileInput} type="file" multiple accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp" disabled={saving} onChange={(event) => { void onFiles(event.target.files); event.currentTarget.value = ""; }} /></label>
       </div>
       <div className="general-courses-content">
-        <div className="file-notice"><span className="notice-icon"><CircleHelp size={16} /></span><span><b>Prototype front-end</b> · Les fichiers restent sur cet appareil et ne sont pas envoyés ni analysés.</span></div>
+        {error ? <div className="file-notice" role="alert"><span className="notice-icon"><CircleHelp size={16} /></span><span><b>Bibliothèque indisponible</b> · {error} <button className="text-button" type="button" onClick={onRetry}>Réessayer</button></span></div> : <div className="file-notice"><span className="notice-icon"><CircleHelp size={16} /></span><span><b>Fichiers privés</b> · Les supports sont stockés dans ton espace; leur indexation et leur analyse viendront ensuite.</span></div>}
         {reviewingCourse ? (
           <section className="course-review-panel">
             <button className="text-button" type="button" onClick={onExitReview}><ArrowLeft size={15} /> Tous les cours</button>
             <div className="feature-page-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> {reviewingCourse.course.toUpperCase()}</div><h2>{reviewingCourse.title}</h2><p>Révision indépendante de tes projets · {reviewingCourse.status}</p></div></div>
-            <article className="answer-section"><div className="answer-section-title"><span className="answer-section-mark">01</span><span>À retenir</span><span className="source-tag">COURS GÉNÉRAL</span></div><p>Les notes de ce cours et leurs références seront mobilisées ici une fois le service documentaire connecté. Cette fiche est un exemple d’interface, pas une synthèse réelle du document.</p></article>
+            <article className="answer-section"><div className="answer-section-title"><span className="answer-section-mark">01</span><span>À retenir</span><span className="source-tag">COURS GÉNÉRAL</span></div><p>Le support est stocké dans ton espace privé. Sa lecture et sa synthèse seront disponibles lorsque le pipeline documentaire sera connecté.</p></article>
             <div className="course-review-actions"><button className="secondary-button" type="button" onClick={() => onToast("La synthèse sera disponible après connexion de l’API documentaire")}>Générer une synthèse</button><button className="primary-button" type="button" onClick={() => onToast("Le quiz sera disponible après connexion de l’API pédagogique")}>Lancer un quiz</button></div>
           </section>
         ) : (
@@ -615,7 +777,7 @@ function GeneralCoursesView({
               <label className="course-filter"><span>Matière</span><select value={subjectFilter} onChange={(event) => onSubjectFilter(event.target.value)}><option value="all">Toutes les matières</option>{subjectOptions.map((subject) => <option key={subject} value={subject}>{subject}</option>)}</select></label>
               <label className="course-filter"><span>Année d’étude</span><select value={yearFilter} onChange={(event) => onYearFilter(event.target.value)}><option value="all">Toutes les années</option>{studyYearOptions.map((year) => <option key={year} value={year}>{year}</option>)}</select></label>
             </div>
-            <div className="course-library-list">{courses.length ? courses.map((course) => <article className="course-library-row" key={course.id}><span className="document-icon document-plan"><BookOpen size={18} /></span><span className="course-library-info"><b>{course.title}</b><small>{course.subject} · {course.studyYear} · {course.meta}</small></span><label className="course-row-field course-row-subject"><span className="visually-hidden">Matière</span><select aria-label={`Matière de ${course.title}`} value={course.subject} onChange={(event) => onSaveClassification(course.id, event.target.value, course.studyYear)}>{subjectOptions.map((subject) => <option key={subject} value={subject}>{subject}</option>)}</select></label><label className="course-row-field course-row-year"><span className="visually-hidden">Année d’étude</span><select aria-label={`Année d’étude de ${course.title}`} value={course.studyYear} onChange={(event) => onSaveClassification(course.id, course.subject, event.target.value)}>{studyYearOptions.map((year) => <option key={year} value={year}>{year}</option>)}</select></label><span className={`file-state ${course.status.includes("non envoyé") ? "file-state-pending" : ""}`}><i />{course.status}</span><button className="secondary-button" type="button" onClick={() => onReview(course.id)}>Réviser <ArrowRight size={15} /></button></article>) : <div className="empty-documents"><span className="empty-icon"><BookOpen size={21} /></span><b>Aucun cours trouvé</b><p>Ajoute un support ou modifie ta recherche.</p></div>}</div>
+            <div className="course-library-list">{loading ? <div className="empty-documents" role="status"><b>Chargement de ta bibliothèque…</b></div> : error ? <div className="empty-documents" role="alert"><b>Les cours sont indisponibles.</b><button className="text-button" type="button" onClick={onRetry}>Réessayer <ArrowRight size={15} /></button></div> : courses.length ? courses.map((course) => <article className="course-library-row" key={course.id}><span className="document-icon document-plan"><BookOpen size={18} /></span><span className="course-library-info"><b>{course.title}</b><small>{course.subject} · {course.studyYear} · {course.meta}</small></span><label className="course-row-field course-row-subject"><span className="visually-hidden">Matière</span><select aria-label={`Matière de ${course.title}`} value={course.subject} onChange={(event) => { void onSaveClassification(course.id, event.target.value, course.studyYear); }}>{subjectOptions.map((subject) => <option key={subject} value={subject}>{subject}</option>)}</select></label><label className="course-row-field course-row-year"><span className="visually-hidden">Année d’étude</span><select aria-label={`Année d’étude de ${course.title}`} value={course.studyYear} onChange={(event) => { void onSaveClassification(course.id, course.subject, event.target.value); }}>{studyYearOptions.map((year) => <option key={year} value={year}>{year}</option>)}</select></label><span className="file-state"><i />{course.status}</span><button className="icon-button" type="button" onClick={() => { void onDownload(course.id); }} aria-label={`Télécharger ${course.title}`} title="Télécharger"><Download size={16} /></button><button className="icon-button" type="button" onClick={() => { void onDelete(course.id); }} aria-label={`Supprimer ${course.title}`} title="Supprimer"><Trash2 size={16} /></button><button className="secondary-button" type="button" onClick={() => onReview(course.id)}>Réviser <ArrowRight size={15} /></button></article>) : search ? <div className="empty-documents"><span className="empty-icon"><Search size={21} /></span><b>Aucun cours trouvé</b><p>Essaie avec un autre terme ou efface ta recherche.</p></div> : <div className="empty-documents first-course-empty"><span className="empty-icon"><BookOpen size={21} /></span><b>Ta bibliothèque commence ici</b><p>Ajoute un support PDF, Word ou une image de cours. Il sera stocké dans ton espace privé, classable par matière et année, puis téléchargeable. L’analyse et les fiches de révision viendront dans une prochaine étape. Taille maximale : 50 Mo par fichier.</p><button className="primary-button" type="button" disabled={saving} onClick={() => courseFileInput.current?.click()}><Upload size={16} /> Ajouter mon premier cours</button></div>}</div>
           </>
         )}
       </div>
@@ -754,9 +916,9 @@ function NotesView({ project, onToast }: { project: Project; onToast: (message: 
   );
 }
 
-function CreateProjectDialog({ name, type, onName, onType, onClose, onSubmit }: { name: string; type: string; onName: (value: string) => void; onType: (value: string) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+function CreateProjectDialog({ name, type, saving, onName, onType, onClose, onSubmit }: { name: string; type: string; saving: boolean; onName: (value: string) => void; onType: (value: string) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void> }) {
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><div className="modal-header"><div><span className="modal-eyebrow">NOUVEL ESPACE DE TRAVAIL</span><h2 id="create-title">Donne forme à une idée.</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="Fermer"><X size={19} /></button></div><p className="modal-copy">Chaque projet garde ses propres documents, conversations et notes.</p><form onSubmit={onSubmit}><label className="form-field"><span>Nom du projet</span><input autoFocus value={name} onChange={(event) => onName(event.target.value)} placeholder="Ex. Maison de quartier" required maxLength={80} /></label><label className="form-field"><span>Type de projet</span><select value={type} onChange={(event) => onType(event.target.value)}><option>Projet d’architecture</option><option>Logement collectif</option><option>Équipement public</option><option>Réhabilitation</option><option>Projet libre</option></select></label><div className="modal-notice"><Sparkles size={16} /><span>Ce projet sera créé dans la démonstration locale ; il ne sera pas sauvegardé après fermeture.</span></div><div className="modal-actions"><button className="secondary-button" type="button" onClick={onClose}>Annuler</button><button className="primary-button" type="submit" disabled={!name.trim()}>Créer le projet <ArrowRight size={15} /></button></div></form></section></div>
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><div className="modal-header"><div><span className="modal-eyebrow">NOUVEL ESPACE DE TRAVAIL</span><h2 id="create-title">Donne forme à une idée.</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="Fermer" disabled={saving}><X size={19} /></button></div><p className="modal-copy">Le projet sera privé à ton compte. Documents, notes et conversations ne sont pas encore sauvegardés.</p><form onSubmit={onSubmit}><label className="form-field"><span>Nom du projet</span><input autoFocus value={name} onChange={(event) => onName(event.target.value)} placeholder="Ex. Maison de quartier" required maxLength={80} disabled={saving} /></label><label className="form-field"><span>Type de projet</span><select value={type} onChange={(event) => onType(event.target.value)} disabled={saving}><option>Projet d’architecture</option><option>Logement collectif</option><option>Équipement public</option><option>Réhabilitation</option><option>Projet libre</option></select></label><div className="modal-notice"><Sparkles size={16} /><span>Le projet sera enregistré dans ton compte Supabase.</span></div><div className="modal-actions"><button className="secondary-button" type="button" onClick={onClose} disabled={saving}>Annuler</button><button className="primary-button" type="submit" disabled={!name.trim() || saving}>{saving ? "Enregistrement…" : "Créer le projet"} <ArrowRight size={15} /></button></div></form></section></div>
   );
 }
 
@@ -812,6 +974,7 @@ function App() {
       displayName={displayName}
       greetingName={firstName || null}
       userEmail={session.user.email ?? "Compte étudiant"}
+      userId={session.user.id}
       onSignOut={signOut}
     />
   );
