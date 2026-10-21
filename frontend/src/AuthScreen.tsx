@@ -33,6 +33,10 @@ function getAuthErrorMessage(error: unknown): string {
 
 function AuthScreen({ initialMode = "sign-in", onRecoveryComplete }: AuthScreenProps) {
   const [mode, setMode] = useState<AuthMode>(initialMode);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [school, setSchool] = useState("");
+  const [studyYear, setStudyYear] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
@@ -44,6 +48,7 @@ function AuthScreen({ initialMode = "sign-in", onRecoveryComplete }: AuthScreenP
   const needsEmail = mode === "sign-in" || mode === "sign-up" || mode === "forgot-password";
   const needsPassword = mode === "sign-in" || mode === "sign-up" || mode === "update-password";
   const needsConfirmation = mode === "sign-up" || mode === "update-password";
+  const needsStudentProfile = mode === "sign-up";
 
   function changeMode(nextMode: AuthMode) {
     setMode(nextMode);
@@ -63,6 +68,10 @@ function AuthScreen({ initialMode = "sign-in", onRecoveryComplete }: AuthScreenP
       setErrorMessage("Les deux mots de passe ne correspondent pas.");
       return;
     }
+    if (needsStudentProfile && (!firstName.trim() || !lastName.trim())) {
+      setErrorMessage("Le prénom et le nom sont obligatoires.");
+      return;
+    }
 
     setBusy(true);
     try {
@@ -73,7 +82,15 @@ function AuthScreen({ initialMode = "sign-in", onRecoveryComplete }: AuthScreenP
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
-          options: { emailRedirectTo: window.location.origin },
+          options: {
+            emailRedirectTo: window.location.origin,
+            data: {
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
+              school: school.trim() || null,
+              study_year: studyYear || null,
+            },
+          },
         });
         if (error) throw error;
         if (!data.session) changeMode("email-sent");
@@ -128,7 +145,7 @@ function AuthScreen({ initialMode = "sign-in", onRecoveryComplete }: AuthScreenP
             <h2 id="auth-title">{title}</h2>
             <p>
               {mode === "sign-in" && "Connecte-toi pour retrouver ton espace de travail."}
-              {mode === "sign-up" && "Un compte personnel pour tes projets et tes cours."}
+              {mode === "sign-up" && "Prénom et nom sont requis. École et année restent facultatives."}
               {mode === "forgot-password" && "Nous t’enverrons un lien pour choisir un nouveau mot de passe."}
               {mode === "update-password" && "Utilise au moins 12 caractères pour sécuriser ton compte."}
               {mode === "email-sent" && `Un email vient d’être envoyé à ${email}.`}
@@ -158,6 +175,37 @@ function AuthScreen({ initialMode = "sign-in", onRecoveryComplete }: AuthScreenP
             </div>
           ) : (
             <form className="auth-form" onSubmit={submit}>
+              {needsStudentProfile && (
+                <>
+                  <div className="auth-name-grid">
+                    <label className="auth-field">
+                      <span>Prénom</span>
+                      <input className="auth-text-input" type="text" autoComplete="given-name" value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="Camille" maxLength={80} required />
+                    </label>
+                    <label className="auth-field">
+                      <span>Nom</span>
+                      <input className="auth-text-input" type="text" autoComplete="family-name" value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="Martin" maxLength={80} required />
+                    </label>
+                  </div>
+                  <label className="auth-field">
+                    <span>École <small>Facultatif</small></span>
+                    <input className="auth-text-input" type="text" autoComplete="organization" value={school} onChange={(event) => setSchool(event.target.value)} placeholder="Nom de ton école" maxLength={160} />
+                  </label>
+                  <label className="auth-field">
+                    <span>Année d’études <small>Facultatif</small></span>
+                    <select className="auth-text-input auth-select" value={studyYear} onChange={(event) => setStudyYear(event.target.value)}>
+                      <option value="">Sélectionner</option>
+                      <option value="1re année">1re année</option>
+                      <option value="2e année">2e année</option>
+                      <option value="3e année">3e année</option>
+                      <option value="4e année">4e année</option>
+                      <option value="5e année">5e année</option>
+                      <option value="autre">Autre parcours</option>
+                    </select>
+                  </label>
+                </>
+              )}
+
               {needsEmail && (
                 <label className="auth-field">
                   <span>Adresse email</span>

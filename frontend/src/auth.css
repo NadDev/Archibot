@@ -23,6 +23,12 @@
 .auth-segment button[aria-selected="true"]{background:#fffefa;color:#415b49;box-shadow:0 1px 4px rgba(45,57,47,.08)}
 .auth-form{display:grid;gap:17px}
 .auth-field{display:grid;gap:7px;color:#535e55;font-size:11px;font-weight:700}
+.auth-field small{margin-left:4px;color:#9a9f97;font-size:9px;font-weight:500}
+.auth-name-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.auth-text-input{width:100%;height:44px;padding:0 12px;border:1px solid #dedfd6;border-radius:7px;background:#fffefa;color:#303a33;font-size:12px;font-weight:400;outline:0;transition:border-color .15s,box-shadow .15s}
+.auth-text-input::placeholder{color:#a4a9a1}
+.auth-text-input:focus{border-color:#77917d;box-shadow:0 0 0 3px rgba(86,117,101,.11)}
+.auth-select{appearance:auto;color:#535e55}
 .auth-input-wrap{height:46px;display:flex;align-items:center;gap:10px;padding:0 12px;border:1px solid #dedfd6;border-radius:7px;background:#fffefa;color:#839084;transition:border-color .15s,box-shadow .15s}
 .auth-input-wrap:focus-within{border-color:#77917d;box-shadow:0 0 0 3px rgba(86,117,101,.11)}
 .auth-input-wrap input{width:100%;height:100%;min-width:0;border:0;outline:0!important;background:transparent;color:#303a33;font-size:13px;font-weight:400}

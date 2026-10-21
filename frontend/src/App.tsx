@@ -189,7 +189,7 @@ function ProjectIcon({ kind }: { kind: Project["files"][number]["icon"] }) {
   return <FileText size={18} />;
 }
 
-function WorkspaceApp({ userEmail, onSignOut }: { userEmail: string; onSignOut: () => void }) {
+function WorkspaceApp({ displayName, userEmail, onSignOut }: { displayName: string; userEmail: string; onSignOut: () => void }) {
   const [projects, setProjects] = useState(starterProjects);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [showCourseLibrary, setShowCourseLibrary] = useState(false);
@@ -386,8 +386,8 @@ function WorkspaceApp({ userEmail, onSignOut }: { userEmail: string; onSignOut: 
         <div className="topbar-right">
           <span className="demo-pill"><span /> MODE DÉMONSTRATION</span>
           <button className="help-button" type="button" onClick={() => showToast("Centre d’aide : bientôt disponible")} aria-label="Aide"><CircleHelp size={18} /></button>
-          <button className="profile-chip authenticated-profile" type="button" onClick={onSignOut} aria-label={`Se déconnecter de ${userEmail}`} title={userEmail}>
-            <span className="profile-avatar">{userEmail.slice(0, 1).toUpperCase()}</span><span className="profile-name">{userEmail}</span><LogOut size={15} />
+          <button className="profile-chip authenticated-profile" type="button" onClick={onSignOut} aria-label={`Se déconnecter de ${displayName}`} title={userEmail}>
+            <span className="profile-avatar">{displayName.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span><span className="profile-name">{displayName}</span><LogOut size={15} />
           </button>
           {activeProject && <button className="mobile-menu-button" type="button" onClick={() => setMobileNavOpen((value) => !value)} aria-label="Ouvrir le menu"><Menu size={20} /></button>}
         </div>
@@ -790,13 +790,27 @@ function App() {
     return <AuthScreen initialMode="update-password" onRecoveryComplete={() => setPasswordRecovery(false)} />;
   }
 
+  const firstName = typeof session.user.user_metadata.first_name === "string"
+    ? session.user.user_metadata.first_name.trim()
+    : "";
+  const lastName = typeof session.user.user_metadata.last_name === "string"
+    ? session.user.user_metadata.last_name.trim()
+    : "";
+  const displayName = [firstName, lastName].filter(Boolean).join(" ") || session.user.email || "Compte étudiant";
+
   async function signOut() {
     if (!supabase) return;
     const { error } = await supabase.auth.signOut();
     if (!error) setSession(null);
   }
 
-  return <WorkspaceApp userEmail={session.user.email ?? "Compte étudiant"} onSignOut={signOut} />;
+  return (
+    <WorkspaceApp
+      displayName={displayName}
+      userEmail={session.user.email ?? "Compte étudiant"}
+      onSignOut={signOut}
+    />
+  );
 }
 
 export default App;
