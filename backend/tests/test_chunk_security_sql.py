@@ -5,6 +5,7 @@ def test_private_chunks_are_restricted_to_authenticated_owner() -> None:
     sql = (Path(__file__).parents[1] / "sql" / "chunks.sql").read_text(encoding="utf-8")
 
     assert "alter table public.chunks enable row level security;" in sql
+    assert "owner_id uuid not null references auth.users(id) on delete cascade" in sql
     assert "revoke all privileges on table public.chunks from anon, authenticated;" in sql
     assert "grant select, insert, update, delete on table public.chunks to authenticated;" in sql
     assert "using (owner_id = (select auth.uid()))" in sql
