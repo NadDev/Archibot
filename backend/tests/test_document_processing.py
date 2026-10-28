@@ -399,6 +399,7 @@ def test_legacy_office_conversion_uses_headless_isolated_profile(
     target_format: str,
     locator_type: str,
 ) -> None:
+    monkeypatch.setenv(legacy_office_module.LEGACY_CONVERSION_OPT_IN, "true")
     monkeypatch.setenv("LIBREOFFICE_BINARY", "fake-libreoffice")
     calls: list[dict[str, Any]] = []
 
@@ -419,11 +420,31 @@ def test_legacy_office_conversion_uses_headless_isolated_profile(
 
 
 def test_legacy_office_conversion_fails_explicitly_without_libreoffice(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(legacy_office_module.LEGACY_CONVERSION_OPT_IN, "true")
     monkeypatch.delenv("LIBREOFFICE_BINARY", raising=False)
     monkeypatch.setattr(legacy_office_module.shutil, "which", lambda _: None)
 
     with pytest.raises(DocumentProcessingError, match="requires LibreOffice"):
         extract_doc_chunks(_legacy_office_file())
+
+
+def test_legacy_office_conversion_is_disabled_without_explicit_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(legacy_office_module.LEGACY_CONVERSION_OPT_IN, raising=False)
+    monkeypatch.setenv("LIBREOFFICE_BINARY", "fake-libreoffice")
+
+    with pytest.raises(DocumentProcessingError, match="disabled until an isolated converter"):
+        extract_doc_chunks(_legacy_office_file())
+
+
+def test_course_extraction_reports_disabled_legacy_conversion(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(legacy_office_module.LEGACY_CONVERSION_OPT_IN, raising=False)
+    client = FakeCourseClient(_legacy_office_file(), "application/msword")
+
+    result = CourseExtractionService(client, "user-a").extract(UUID(client.rows[0]["id"]))
+
+    assert result.status == "failed"
+    assert result.chunk_count == 0
+    assert "disabled until an isolated converter" in (result.error or "")
 
 
 def test_legacy_office_mime_types_are_connected_to_converters() -> None:

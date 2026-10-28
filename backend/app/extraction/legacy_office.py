@@ -13,6 +13,7 @@ from .office import extract_docx_chunks, extract_pptx_chunks
 MAX_LEGACY_FILE_BYTES = 50 * 1024 * 1024
 CONVERSION_TIMEOUT_SECONDS = 60
 OLE_COMPOUND_FILE_SIGNATURE = bytes.fromhex("D0CF11E0A1B11AE1")
+LEGACY_CONVERSION_OPT_IN = "ARCHIBOT_ENABLE_LEGACY_OFFICE_CONVERSION"
 
 
 def _convert_legacy_office(data: bytes, extension: str, target_format: str) -> bytes:
@@ -20,6 +21,10 @@ def _convert_legacy_office(data: bytes, extension: str, target_format: str) -> b
         raise DocumentProcessingError("The legacy Office document is empty or exceeds 50 MB.")
     if not data.startswith(OLE_COMPOUND_FILE_SIGNATURE):
         raise DocumentProcessingError("The legacy Office document is invalid.")
+    if os.environ.get(LEGACY_CONVERSION_OPT_IN, "").lower() != "true":
+        raise DocumentProcessingError(
+            "Legacy Office conversion is disabled until an isolated converter is configured."
+        )
 
     binary = os.environ.get("LIBREOFFICE_BINARY") or shutil.which("soffice") or shutil.which("libreoffice")
     if not binary:
