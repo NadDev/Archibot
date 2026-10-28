@@ -246,3 +246,14 @@ def test_supabase_store_reads_structural_course_locations(monkeypatch: pytest.Mo
     assert metadata.locator == "Diapositive 2"
     assert metadata.source_order == 2
     assert metadata.doc_version == "pptx-v1"
+
+    fake_client.queries["project_course_chunks"].rows[0].update({
+        "locator_type": "image",
+        "locator": "Image",
+        "source_order": 1,
+        "document_format": "png",
+    })
+    image_chunks = SupabaseChunkStore(settings, "user-jwt").list_chunks(project_id, "user-a")
+
+    assert image_chunks[0][1].locator_type == "image"
+    assert image_chunks[0][1].doc_version == "png-v1"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import partial
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -11,9 +12,12 @@ from ..auth import AuthenticatedUser, get_current_user
 from ..config import get_settings
 from ..extraction import (
     DocumentProcessingError,
+    extract_doc_chunks,
     extract_docx_chunks,
     extract_epub_chunks,
+    extract_image_chunks,
     extract_pdf_chunks,
+    extract_ppt_chunks,
     extract_pptx_chunks,
 )
 
@@ -22,9 +26,14 @@ MAX_DOCUMENT_BYTES = 50 * 1024 * 1024
 router = APIRouter(prefix="/v1/courses", tags=["courses"])
 EXTRACTORS = {
     "application/pdf": ("pdf", extract_pdf_chunks),
+    "application/msword": ("doc", extract_doc_chunks),
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ("docx", extract_docx_chunks),
+    "application/vnd.ms-powerpoint": ("ppt", extract_ppt_chunks),
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": ("pptx", extract_pptx_chunks),
     "application/epub+zip": ("epub", extract_epub_chunks),
+    "image/png": ("png", partial(extract_image_chunks, document_format="png")),
+    "image/jpeg": ("jpeg", partial(extract_image_chunks, document_format="jpeg")),
+    "image/webp": ("webp", partial(extract_image_chunks, document_format="webp")),
 }
 
 

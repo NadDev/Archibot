@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
 from zipfile import ZIP_STORED, ZipFile
@@ -10,6 +11,8 @@ import httpx
 from typing import Any
 from docx import Document
 from fastapi import HTTPException
+import numpy as np
+from PIL import Image
 from pptx import Presentation
 from pptx.util import Inches
 
@@ -17,14 +20,20 @@ from app.extraction import (
     DocumentProcessingError,
     chunk_text,
     extract_docx_chunks,
+    extract_doc_chunks,
     extract_epub_chunks,
+    extract_image_chunks,
     extract_pdf_chunks,
     extract_pptx_chunks,
+    extract_ppt_chunks,
 )
 from app.auth import AuthenticatedUser
 from app.config import Settings
 from app.upload import courses as courses_module
 from app.upload.courses import CourseExtractionService, get_course_extraction_service
+from app.extraction import image as image_module
+from app.extraction import legacy_office as legacy_office_module
+from app.extraction import pdf as pdf_module
 
 
 def _pdf_with_text(*page_texts: str) -> bytes:
@@ -109,6 +118,16 @@ def _epub_with_chapters() -> bytes:
         return output.getvalue()
 
 
+def _png_image() -> bytes:
+    output = BytesIO()
+    Image.new("RGB", (40, 30), "white").save(output, format="PNG")
+    return output.getvalue()
+
+
+def _legacy_office_file() -> bytes:
+    return bytes.fromhex("D0CF11E0A1B11AE1") + b"legacy test payload"
+
+
 def test_extract_pdf_text_preserves_page_and_chunk_references() -> None:
     chunks = extract_pdf_chunks(
         _pdf_with_text("Architecture course reference supports spatial design choices"),
@@ -135,6 +154,43 @@ def test_extract_pdf_chunks_keep_their_source_page() -> None:
     assert [(chunk.page_number, chunk.chunk_index) for chunk in chunks] == [(1, 1), (2, 1)]
     assert [(chunk.locator, chunk.source_order) for chunk in chunks] == [("Page 1", 1), ("Page 2", 2)]
     assert [chunk.text for chunk in chunks] == ["first page content", "second page content"]
+
+
+def test_extract_pdf_runs_ocr_only_for_pages_without_native_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    recognized_pages: list[tuple[int, int, int]] = []
+
+    def recognize(image: np.ndarray) -> str:
+        recognized_pages.append(image.shape)
+        return "Texte lu sur le scan"
+
+    monkeypatch.setattr(pdf_module, "recognize_text", recognize)
+    chunks = extract_pdf_chunks(_pdf_with_text("", "Cette page contient assez de texte natif pour eviter OCR."))
+
+    assert len(chunks) == 2
+    assert chunks[0].text == "Texte lu sur le scan"
+    assert chunks[0].page_number == 1
+    assert chunks[1].page_number == 2
+    assert len(recognized_pages) == 1
+
+
+def test_extract_image_chunks_uses_ocr_and_image_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
+    image_buffer = BytesIO()
+    Image.new("RGB", (40, 30), "white").save(image_buffer, format="PNG")
+    received_shapes: list[tuple[int, ...]] = []
+
+    def recognize(image: np.ndarray) -> str:
+        received_shapes.append(image.shape)
+        return "Plan de ventilation"
+
+    monkeypatch.setattr(image_module, "recognize_text", recognize)
+    chunks = extract_image_chunks(image_buffer.getvalue(), "png")
+
+    assert len(chunks) == 1
+    assert chunks[0].text == "Plan de ventilation"
+    assert chunks[0].page_number is None
+    assert chunks[0].locator_type == "image"
+    assert chunks[0].locator == "Image"
+    assert received_shapes == [(30, 40, 3)]
 
 
 def test_extract_docx_keeps_sections_and_tables_without_fake_pages() -> None:
@@ -304,10 +360,75 @@ def test_course_extraction_records_parse_failure(content: bytes) -> None:
 
 
 def test_course_extraction_leaves_other_formats_stored_without_parsing() -> None:
-    client = FakeCourseClient(b"image content", "image/png")
+    client = FakeCourseClient(b"unknown content", "application/octet-stream")
     result = CourseExtractionService(client, "user-a").extract(UUID(client.rows[0]["id"]))
     assert result.status == "unsupported"
     assert client.downloads == []
+
+
+def test_course_extraction_dispatches_image_ocr_and_persists_locator(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeCourseClient(_png_image(), "image/png")
+    monkeypatch.setattr(image_module, "recognize_text", lambda image: "Texte de plan reconnu")
+
+    result = CourseExtractionService(client, "user-a").extract(UUID(client.rows[0]["id"]))
+
+    assert result.status == "extracted"
+    assert client.saved["result_chunks"] == [{
+        "text": "Texte de plan reconnu",
+        "page_number": None,
+        "chunk_index": 1,
+        "locator_type": "image",
+        "locator": "Image",
+        "source_order": 1,
+        "document_format": "png",
+    }]
+
+
+@pytest.mark.parametrize(
+    ("extractor", "converted_content", "target_format", "locator_type"),
+    [
+        (extract_doc_chunks, _docx_with_content(), "docx", "section"),
+        (extract_ppt_chunks, _pptx_with_content(), "pptx", "slide"),
+    ],
+    ids=["doc", "ppt"],
+)
+def test_legacy_office_conversion_uses_headless_isolated_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    extractor,
+    converted_content: bytes,
+    target_format: str,
+    locator_type: str,
+) -> None:
+    monkeypatch.setenv("LIBREOFFICE_BINARY", "fake-libreoffice")
+    calls: list[dict[str, Any]] = []
+
+    def run(command, **options):
+        calls.append({"command": command, **options})
+        output_dir = Path(command[command.index("--outdir") + 1])
+        (output_dir / f"source.{target_format}").write_bytes(converted_content)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(legacy_office_module.subprocess, "run", run)
+    chunks = extractor(_legacy_office_file())
+
+    assert chunks[0].locator_type == locator_type
+    assert "--headless" in calls[0]["command"]
+    assert any(arg.startswith("-env:UserInstallation=file:") for arg in calls[0]["command"])
+    assert calls[0]["timeout"] == legacy_office_module.CONVERSION_TIMEOUT_SECONDS
+    assert calls[0]["capture_output"] is True
+
+
+def test_legacy_office_conversion_fails_explicitly_without_libreoffice(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LIBREOFFICE_BINARY", raising=False)
+    monkeypatch.setattr(legacy_office_module.shutil, "which", lambda _: None)
+
+    with pytest.raises(DocumentProcessingError, match="requires LibreOffice"):
+        extract_doc_chunks(_legacy_office_file())
+
+
+def test_legacy_office_mime_types_are_connected_to_converters() -> None:
+    assert courses_module.EXTRACTORS["application/msword"] == ("doc", extract_doc_chunks)
+    assert courses_module.EXTRACTORS["application/vnd.ms-powerpoint"] == ("ppt", extract_ppt_chunks)
 
 
 def test_course_extraction_rejects_foreign_storage_path() -> None:

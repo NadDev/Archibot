@@ -10,7 +10,7 @@ from .extraction.store import project_course_chunks
 from .schemas import ChunkMetadata, ChunkVisibility, SourceType
 
 
-LocatorType = Literal["page", "slide", "section", "chapter"]
+LocatorType = Literal["page", "slide", "section", "chapter", "image"]
 
 
 def _optional_int(value: object) -> int | None:
@@ -18,7 +18,7 @@ def _optional_int(value: object) -> int | None:
 
 
 def _optional_locator_type(value: object) -> LocatorType | None:
-    if value in {"page", "slide", "section", "chapter"}:
+    if value in {"page", "slide", "section", "chapter", "image"}:
         return cast(LocatorType, value)
     return None
 

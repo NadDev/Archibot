@@ -84,11 +84,12 @@ create table if not exists chunks (
  - POST /v1/courses/{course_id}/extract (Bearer Supabase Auth requis; cours privé existant)
 
 ## Extraction documentaire
-- `app/extraction/` contient les parseurs PDF, DOCX, PPTX et EPUB. PDF : chunks par page ; DOCX : paragraphes/titres/tableaux regroupés par section ; PPTX : texte/tableaux de diapositives et formes groupées ; EPUB : XHTML dans l'ordre de lecture du spine, par chapitre.
+- `app/extraction/` contient les parseurs PDF, DOC/DOCX, PPT/PPTX, EPUB et images. PDF : texte natif avec fallback OCR par page ; DOC/PPT binaires : conversion LibreOffice puis parseur moderne ; images : OCR avec localisateur `image`.
 - `DocumentChunk` conserve `page_number` pour le PDF et utilise `locator_type`, `locator`, `source_order` pour tous les formats. Les documents reformatables n'ont pas de numéro de page fictif.
 - Les limites par défaut sont de 1 200 caractères par chunk avec 160 caractères de recouvrement ; elles sont configurables par appel.
-- Les fichiers invalides, vides, protégés ou sans texte extractible sont rejetés avec une erreur explicite. DOCX/PPTX/EPUB sont prévalidés (nombre d'entrées, taille totale décompressée, ratio de compression, chemins et entrées chiffrées).
-- PDF sans texte, images incorporées, notes de présentation et scans nécessitent OCR, non inclus. Les anciens formats binaires DOC/PPT sont stockés mais non extraits ; aucune conversion Office système n'est installée.
+- Les fichiers invalides, vides, protégés ou sans texte extractible sont rejetés avec une erreur explicite. DOCX/PPTX/EPUB sont prévalidés (nombre d'entrées, taille totale décompressée, ratio de compression, chemins et entrées chiffrées). Les images sont limitées à 20 mégapixels ; l'OCR PDF est limité à 30 pages scannées et 12 mégapixels rendus par page.
+- RapidOCR/ONNX Runtime et PyMuPDF exécutent l'OCR localement. La reconnaissance peut normaliser ou omettre des accents ; aucune confiance OCR n'est encore persistée. Les images intégrées aux diaporamas, notes de présentation et rapports détaillés par page restent hors périmètre.
+- DOC/PPT binaires nécessitent LibreOffice installé sur le serveur (`LIBREOFFICE_BINARY` peut désigner son exécutable). Conversion isolée dans un dossier temporaire, en mode headless, limitée à 60 secondes et 50 Mio. L'environnement de développement actuel n'a pas LibreOffice ; les tests vérifient le protocole avec un convertisseur simulé, pas la conversion réelle. Pour la production, isoler LibreOffice des données/secrets et appliquer des limites CPU/mémoire au processus.
 - `app/upload/courses.py` expose l'extraction d'un cours déjà envoyé dans le bucket privé `user-courses`. Le propriétaire est vérifié et le JWT utilisateur est transmis à Storage et PostgREST.
 - Appliquer `sql/course_extraction.sql` après `sql/projects.sql`, `sql/user_courses.sql` et `sql/project_courses.sql`, puis `sql/course_document_locations.sql`. Cette dernière migration préserve les pages PDF existantes, rend la page facultative pour les autres formats, ajoute les localisateurs/formats et élargit l'allowlist MIME privée.
 - L'enregistrement des chunks et du statut est transactionnel. Une relance remplace les chunks sans doublons ; une insertion invalide annule la transaction. Un résultat d'échec supprime les anciens chunks et conserve une raison explicite, sans supprimer le fichier.
@@ -103,11 +104,11 @@ create table if not exists chunks (
 - `app/extraction/` : parseurs, découpage, sécurité des archives et récupération des extractions.
 - `app/upload/` : orchestration des documents privés et routes associées.
 - `app/main.py` assemble les routes ; ajouter les prochaines fonctionnalités dans leur package plutôt qu'à la racine de `app`.
-- Les modules historiques seront déplacés lorsque leur fonctionnalité sera retravaillée. DOCX, EPUB et OCR auront des parseurs séparés, sans supposer que tous les formats ont des pages.
+- Les modules historiques seront déplacés lorsque leur fonctionnalité sera retravaillée. Les parseurs OCR et Office hérités restent séparés, sans supposer que tous les formats ont des pages.
 
 ## Vérification de l'extraction
 - Depuis `backend`, lancer `.\.venv\Scripts\python.exe -m pytest -q`.
-- Les tests synthétiques couvrent les tableaux DOCX/PPTX, le spine EPUB, les localisateurs, le dispatch automatique et les paquets invalides. La migration `course_document_locations.sql` a été testée sur PostgreSQL embarqué avec backfill d'une page existante, écriture d'une diapositive sans page et retrieval sous rôle authentifié.
+- Les tests synthétiques couvrent OCR d'images/PDF (et un échantillon réel local), conversion DOC/PPT simulée, tableaux DOCX/PPTX, spine EPUB, localisateurs, dispatch et paquets invalides. Appliquer `sql/course_document_ocr_legacy.sql` après `course_document_locations.sql` pour étendre les formats acceptés en base et dans le bucket privé.
 - `tests/course_extraction.sql` teste les transactions, la RLS entre deux comptes, les privilèges anonymes, les liens aux projets et la suppression en cascade. L'exécuter avec `psql -v ON_ERROR_STOP=1 -f tests/course_extraction.sql` sur une base de test où les schémas Auth/Storage et les migrations sont installés ; les données de test sont annulées par `rollback`.
 - Parcours navigateur validé avec un compte dédié : upload automatique, PDF multipage, erreur PDF invalide, image stockée sans extraction, reprise, rechargement, association au projet et recherche avec provenance.
 

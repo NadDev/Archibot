@@ -26,7 +26,7 @@ class ChunkMetadata(BaseModel):
     locality: Optional[str] = None
     page_number: Optional[int] = Field(default=None, ge=1)
     chunk_index: Optional[int] = Field(default=None, ge=1)
-    locator_type: Optional[Literal["page", "slide", "section", "chapter"]] = None
+    locator_type: Optional[Literal["page", "slide", "section", "chapter", "image"]] = None
     locator: Optional[str] = Field(default=None, min_length=1, max_length=500)
     source_order: Optional[int] = Field(default=None, ge=1)
     ingested_at: datetime

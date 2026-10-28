@@ -57,3 +57,13 @@ def test_course_document_locations_preserve_pages_and_support_structural_formats
     assert "security invoker set search_path = ''" in sql
     assert "application/vnd.openxmlformats-officedocument.presentationml.presentation" in sql
     assert "application/epub+zip" in sql
+
+
+def test_course_ocr_and_legacy_migration_allows_image_and_binary_office_formats() -> None:
+    sql = (Path(__file__).parents[1] / "sql" / "course_document_ocr_legacy.sql").read_text(encoding="utf-8")
+
+    assert "'image'" in sql
+    assert "'doc'" in sql and "'ppt'" in sql
+    assert "application/vnd.ms-powerpoint" in sql
+    assert "create policy" not in sql
+    assert "security definer" not in sql

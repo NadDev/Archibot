@@ -37,14 +37,20 @@ export const extractionLabels: Record<ExtractionStatus, string> = {
 };
 export const extractableContentTypes = new Set([
   "application/pdf",
+  "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-powerpoint",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   "application/epub+zip",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
 ]);
 const courseMimeTypes: Record<string, string> = {
   pdf: "application/pdf",
   doc: "application/msword",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ppt: "application/vnd.ms-powerpoint",
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   epub: "application/epub+zip",
   png: "image/png",

@@ -198,5 +198,5 @@ Les lots existants sont le decoupage produit. La sequence ci-dessous les rend ex
 - Gate PDF texte validee : parcours navigateur reel du compte de test jusqu'au retrieval avec pages ; tests SQL natifs PostgreSQL 18 pour isolation, rollback et suppression. Correctif Auth : lecture de `UserResponse.user` verifiee avec le modele du SDK.
 - UX : pas d'action d'extraction technique apres succes ; « Reessayer » uniquement en attente ou apres echec.
 - Organisation : nouveaux modules backend/frontend regroupes dans des dossiers de fonctionnalite (`extraction`, `upload`).
-- Livré en complément : DOCX, PPTX et EPUB avec provenance typée et migration appliquée ; tests backend couvrent extraction, tableaux, ordre de lecture, retrieval et sécurité des archives.
-- Reste : OCR photos/scans et PDF sans texte, rapports complets de qualité/durée, conversion des anciens DOC/PPT, puis embeddings/retrieval vectoriel. Ne pas marquer la carte 3.1.3 terminée.
+- Livré en complément : DOCX, PPTX, EPUB, OCR des images/PDF scannés et parseurs DOC/PPT via conversion LibreOffice configurable ; provenance typée et migrations appliquées. Les tests backend couvrent parseurs et dispatch ; conversion réelle à valider sur un serveur avec LibreOffice.
+- Reste : rapports de confiance/qualité par page, sandbox et traitement asynchrone CPU/mémoire pour l'OCR et LibreOffice, puis embeddings/retrieval vectoriel. Ne pas marquer la carte 3.1.3 terminée.
