@@ -94,7 +94,6 @@ function getTableSetupMessage(error: unknown, tableLabel: string, sqlFile: strin
 }
 
 const studyYearOptions = ["1re année", "2e année", "Transversale", "Non précisée"];
-const otherSubjectOption = "__other__";
 const courseMimeTypes: Record<string, string> = {
   pdf: "application/pdf",
   doc: "application/msword",
@@ -191,9 +190,11 @@ function WorkspaceApp({ displayName, greetingName, userEmail, userId, onSignOut 
   const [courseSubjectFilter, setCourseSubjectFilter] = useState("all");
   const [courseYearFilter, setCourseYearFilter] = useState("all");
   const [newCourseSubject, setNewCourseSubject] = useState("À classer");
-  const [newCustomCourseSubject, setNewCustomCourseSubject] = useState("");
   const [newCourseYear, setNewCourseYear] = useState("Non précisée");
   const [courseContextByProject, setCourseContextByProject] = useState<Record<string, string[]>>({});
+  const [newSummary, setNewSummary] = useState("");
+  const [newProjectCourseIds, setNewProjectCourseIds] = useState<string[]>([]);
+  const [projectCourseSearch, setProjectCourseSearch] = useState("");
   const [section, setSection] = useState<Section>("chat");
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
@@ -259,6 +260,27 @@ function WorkspaceApp({ displayName, greetingName, userEmail, userId, onSignOut 
     return () => { isCurrent = false; };
   }, [userId, coursesReloadKey]);
 
+  useEffect(() => {
+    let isCurrent = true;
+    async function loadProjectCourses() {
+      if (!supabase) return;
+      const { data, error } = await supabase.from("project_course_links").select("project_id, course_id");
+      if (!isCurrent) return;
+      if (error) {
+        showToast(getTableSetupMessage(error, "des associations cours-projets", "project_courses.sql"));
+        return;
+      }
+      const links: Record<string, string[]> = {};
+      for (const row of data ?? []) {
+        const link = row as { project_id: string; course_id: string };
+        (links[link.project_id] ??= []).push(link.course_id);
+      }
+      setCourseContextByProject(links);
+    }
+    void loadProjectCourses();
+    return () => { isCurrent = false; };
+  }, [userId]);
+
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? null;
   const visibleProjects = useMemo(() => projects.filter((project) =>
     `${project.name} ${project.type} ${project.status}`.toLowerCase().includes(search.toLowerCase()),
@@ -271,6 +293,9 @@ function WorkspaceApp({ displayName, greetingName, userEmail, userId, onSignOut 
       && (courseSubjectFilter === "all" || course.subject === courseSubjectFilter)
       && (courseYearFilter === "all" || course.studyYear === courseYearFilter),
   );
+  const visibleProjectCourses = useMemo(() => generalCourses.filter((course) =>
+    `${course.title} ${course.course} ${course.subject} ${course.studyYear}`.toLowerCase().includes(projectCourseSearch.toLowerCase()),
+  ), [generalCourses, projectCourseSearch]);
 
   function showToast(message: string) {
     setToast(message);
@@ -315,17 +340,33 @@ function WorkspaceApp({ displayName, greetingName, userEmail, userId, onSignOut 
     }
     setProjectSaving(true);
     try {
+      const selectedCourseIds = newProjectCourseIds.filter((id) => generalCourses.some((course) => course.id === id));
       const { data, error } = await supabase.from("projects").insert({
         name: cleanedName,
         project_type: newType,
+        summary: newSummary.trim() || "Ajoute un peu de contexte pour commencer à organiser ton travail et tes références.",
       }).select("id, name, project_type, status, updated_at, progress, location, term, summary").single();
       if (error) throw error;
+      if (selectedCourseIds.length) {
+        const { error: linksError } = await supabase.from("project_course_links").insert(
+          selectedCourseIds.map((courseId) => ({ project_id: data.id, course_id: courseId })),
+        );
+        if (linksError) {
+          const { error: rollbackError } = await supabase.from("projects").delete().eq("id", data.id);
+          if (rollbackError) throw new Error(`${linksError.message} Le projet a été créé, mais son nettoyage a échoué : ${rollbackError.message}`);
+          throw linksError;
+        }
+      }
       const project = mapProject(data as ProjectRow);
       setProjects((items) => [project, ...items]);
+      setCourseContextByProject((items) => ({ ...items, [project.id]: selectedCourseIds }));
       const welcome: ChatItem[] = [{ id: Date.now(), role: "assistant", text: `Bienvenue dans « ${project.name} ». Les informations du projet sont enregistrées dans ton compte.`, time: "—" }];
       setChatByProject((items) => ({ ...items, [project.id]: welcome }));
       setChat(welcome);
       setNewName("");
+      setNewSummary("");
+      setNewProjectCourseIds([]);
+      setProjectCourseSearch("");
       setShowCreate(false);
       setActiveProjectId(project.id);
       setSection("chat");
@@ -380,9 +421,7 @@ function WorkspaceApp({ displayName, greetingName, userEmail, userId, onSignOut 
       showToast("La connexion à Supabase n’est pas disponible.");
       return;
     }
-    const subject = newCourseSubject === otherSubjectOption
-      ? newCustomCourseSubject.trim() || "À classer"
-      : newCourseSubject;
+    const subject = newCourseSubject.trim() || "À classer";
     const additions: CourseDocument[] = [];
     let failedUploads = 0;
     setCourseSaving(true);
@@ -482,14 +521,19 @@ function WorkspaceApp({ displayName, greetingName, userEmail, userId, onSignOut 
     showToast("Cours supprimé.");
   }
 
-  function toggleCourseContext(projectId: string, courseId: string) {
-    setCourseContextByProject((current) => {
-      const selected = current[projectId] ?? [];
-      const next = selected.includes(courseId)
-        ? selected.filter((id) => id !== courseId)
-        : [...selected, courseId];
-      return { ...current, [projectId]: next };
-    });
+  async function toggleCourseContext(projectId: string, courseId: string) {
+    const current = courseContextByProject[projectId] ?? [];
+    const wasSelected = current.includes(courseId);
+    const next = wasSelected ? current.filter((id) => id !== courseId) : [...current, courseId];
+    setCourseContextByProject((items) => ({ ...items, [projectId]: next }));
+    if (!supabase) return;
+    const { error } = wasSelected
+      ? await supabase.from("project_course_links").delete().eq("project_id", projectId).eq("course_id", courseId)
+      : await supabase.from("project_course_links").insert({ project_id: projectId, course_id: courseId });
+    if (error) {
+      setCourseContextByProject((items) => ({ ...items, [projectId]: current }));
+      showToast(`Association non enregistrée : ${getTableSetupMessage(error, "des associations cours-projets", "project_courses.sql")}`);
+    }
   }
 
   function submitExercise(event: FormEvent<HTMLFormElement>) {
@@ -536,14 +580,12 @@ function WorkspaceApp({ displayName, greetingName, userEmail, userId, onSignOut 
               subjectFilter={courseSubjectFilter}
               yearFilter={courseYearFilter}
               newSubject={newCourseSubject}
-              customSubject={newCustomCourseSubject}
               newYear={newCourseYear}
               reviewingCourse={generalCourses.find((course) => course.id === reviewingCourseId) ?? null}
               onSearch={setCourseSearch}
               onSubjectFilter={setCourseSubjectFilter}
               onYearFilter={setCourseYearFilter}
               onNewSubject={setNewCourseSubject}
-              onCustomSubject={setNewCustomCourseSubject}
               onNewYear={setNewCourseYear}
               onFiles={addGeneralCourseFiles}
               onSaveClassification={updateGeneralCourseClassification}
@@ -621,7 +663,7 @@ function WorkspaceApp({ displayName, greetingName, userEmail, userId, onSignOut 
 
       <footer className="demo-footer"><span className="demo-footer-dot" /> Projets enregistrés dans ton compte <span>·</span> Documents, notes et conversations encore en démonstration</footer>
 
-      {showCreate && <CreateProjectDialog name={newName} type={newType} saving={projectSaving} onName={setNewName} onType={setNewType} onClose={() => setShowCreate(false)} onSubmit={createProject} />}
+      {showCreate && <CreateProjectDialog name={newName} type={newType} description={newSummary} courses={visibleProjectCourses} coursesLoading={coursesLoading} coursesError={coursesError} courseSearch={projectCourseSearch} selectedCourseIds={newProjectCourseIds} saving={projectSaving} onName={setNewName} onType={setNewType} onDescription={setNewSummary} onCourseSearch={setProjectCourseSearch} onToggleCourse={(courseId) => setNewProjectCourseIds((current) => current.includes(courseId) ? current.filter((id) => id !== courseId) : [...current, courseId])} onClose={() => setShowCreate(false)} onSubmit={createProject} />}
       {toast && <div className="toast-message" role="status"><Check size={16} />{toast}</div>}
     </div>
   );
@@ -656,7 +698,7 @@ function ProjectsHome({
         <div className="eyebrow"><span className="eyebrow-line" /> TON ESPACE DE TRAVAIL</div>
         <div className="home-heading-row">
           <div><h1>{greetingName ? <>Bonjour {greetingName}</> : "Mon espace de travail"}<span className="hello-period">.</span></h1><p>Reprends là où tu en étais, ou ouvre un nouvel atelier.</p></div>
-          <div className="home-actions"><button className="secondary-button" type="button" onClick={onOpenCourses}><BookOpen size={17} /> Cours généraux</button><button className="primary-button create-project-button" type="button" onClick={onCreate}><Plus size={18} /> Nouveau projet</button></div>
+          <div className="home-actions"><button className="primary-button create-project-button" type="button" onClick={onCreate}><Plus size={18} /> Nouveau projet</button><button className="secondary-button" type="button" onClick={onOpenCourses}><BookOpen size={17} /> Cours généraux</button></div>
         </div>
         <div className="home-meta-row"><span><FolderKanban size={16} /> {loading ? "…" : projects.length} projets</span><span className="meta-divider" /><span><Clock3 size={16} /> Tes espaces restent séparés</span></div>
       </div>
@@ -691,14 +733,12 @@ function GeneralCoursesView({
   subjectFilter,
   yearFilter,
   newSubject,
-  customSubject,
   newYear,
   reviewingCourse,
   onSearch,
   onSubjectFilter,
   onYearFilter,
   onNewSubject,
-  onCustomSubject,
   onNewYear,
   onFiles,
   onSaveClassification,
@@ -722,14 +762,12 @@ function GeneralCoursesView({
   subjectFilter: string;
   yearFilter: string;
   newSubject: string;
-  customSubject: string;
   newYear: string;
   reviewingCourse: CourseDocument | null;
   onSearch: (value: string) => void;
   onSubjectFilter: (value: string) => void;
   onYearFilter: (value: string) => void;
   onNewSubject: (value: string) => void;
-  onCustomSubject: (value: string) => void;
   onNewYear: (value: string) => void;
   onFiles: (files: FileList | null) => void | Promise<void>;
   onSaveClassification: (id: string, subject: string, studyYear: string) => void | Promise<void>;
@@ -755,8 +793,7 @@ function GeneralCoursesView({
         <div className="home-meta-row"><span><BookOpen size={16} /> {loading ? "…" : allCourses.length} cours</span><span className="meta-divider" /><span><FolderKanban size={16} /> Bibliothèque privée à ton compte</span></div>
       </div>
       <div className="course-add-toolbar">
-        <label className="course-field"><span>Matière du cours ajouté</span><select value={newSubject} onChange={(event) => onNewSubject(event.target.value)}>{subjectOptions.map((subject) => <option key={subject} value={subject}>{subject}</option>)}<option value={otherSubjectOption}>Autre matière…</option></select></label>
-        {newSubject === otherSubjectOption && <label className="course-field"><span>Nom de la matière</span><input value={customSubject} onChange={(event) => onCustomSubject(event.target.value)} placeholder="Ex. Théorie de l’architecture" /></label>}
+        <label className="course-field"><span>Matière du cours ajouté</span><input list="course-subject-suggestions" value={newSubject} onChange={(event) => onNewSubject(event.target.value)} placeholder="Choisir ou saisir une matière" /><datalist id="course-subject-suggestions">{subjectOptions.map((subject) => <option key={subject} value={subject} />)}</datalist></label>
         <label className="course-field"><span>Année d’étude</span><select value={newYear} onChange={(event) => onNewYear(event.target.value)}>{studyYearOptions.map((year) => <option key={year} value={year}>{year}</option>)}</select></label>
         <label className="primary-button upload-button"><Upload size={17} /> {saving ? "Envoi…" : "Ajouter des cours"}<input ref={courseFileInput} type="file" multiple accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp" disabled={saving} onChange={(event) => { void onFiles(event.target.files); event.currentTarget.value = ""; }} /></label>
       </div>
@@ -777,7 +814,7 @@ function GeneralCoursesView({
               <label className="course-filter"><span>Matière</span><select value={subjectFilter} onChange={(event) => onSubjectFilter(event.target.value)}><option value="all">Toutes les matières</option>{subjectOptions.map((subject) => <option key={subject} value={subject}>{subject}</option>)}</select></label>
               <label className="course-filter"><span>Année d’étude</span><select value={yearFilter} onChange={(event) => onYearFilter(event.target.value)}><option value="all">Toutes les années</option>{studyYearOptions.map((year) => <option key={year} value={year}>{year}</option>)}</select></label>
             </div>
-            <div className="course-library-list">{loading ? <div className="empty-documents" role="status"><b>Chargement de ta bibliothèque…</b></div> : error ? <div className="empty-documents" role="alert"><b>Les cours sont indisponibles.</b><button className="text-button" type="button" onClick={onRetry}>Réessayer <ArrowRight size={15} /></button></div> : courses.length ? courses.map((course) => <article className="course-library-row" key={course.id}><span className="document-icon document-plan"><BookOpen size={18} /></span><span className="course-library-info"><b>{course.title}</b><small>{course.subject} · {course.studyYear} · {course.meta}</small></span><label className="course-row-field course-row-subject"><span className="visually-hidden">Matière</span><select aria-label={`Matière de ${course.title}`} value={course.subject} onChange={(event) => { void onSaveClassification(course.id, event.target.value, course.studyYear); }}>{subjectOptions.map((subject) => <option key={subject} value={subject}>{subject}</option>)}</select></label><label className="course-row-field course-row-year"><span className="visually-hidden">Année d’étude</span><select aria-label={`Année d’étude de ${course.title}`} value={course.studyYear} onChange={(event) => { void onSaveClassification(course.id, course.subject, event.target.value); }}>{studyYearOptions.map((year) => <option key={year} value={year}>{year}</option>)}</select></label><span className="file-state"><i />{course.status}</span><button className="icon-button" type="button" onClick={() => { void onDownload(course.id); }} aria-label={`Télécharger ${course.title}`} title="Télécharger"><Download size={16} /></button><button className="icon-button" type="button" onClick={() => { void onDelete(course.id); }} aria-label={`Supprimer ${course.title}`} title="Supprimer"><Trash2 size={16} /></button><button className="secondary-button" type="button" onClick={() => onReview(course.id)}>Réviser <ArrowRight size={15} /></button></article>) : search ? <div className="empty-documents"><span className="empty-icon"><Search size={21} /></span><b>Aucun cours trouvé</b><p>Essaie avec un autre terme ou efface ta recherche.</p></div> : <div className="empty-documents first-course-empty"><span className="empty-icon"><BookOpen size={21} /></span><b>Ta bibliothèque commence ici</b><p>Ajoute un support PDF, Word ou une image de cours. Il sera stocké dans ton espace privé, classable par matière et année, puis téléchargeable. L’analyse et les fiches de révision viendront dans une prochaine étape. Taille maximale : 50 Mo par fichier.</p><button className="primary-button" type="button" disabled={saving} onClick={() => courseFileInput.current?.click()}><Upload size={16} /> Ajouter mon premier cours</button></div>}</div>
+            <div className="course-library-list">{loading ? <div className="empty-documents" role="status"><b>Chargement de ta bibliothèque…</b></div> : error ? <div className="empty-documents" role="alert"><b>Les cours sont indisponibles.</b><button className="text-button" type="button" onClick={onRetry}>Réessayer <ArrowRight size={15} /></button></div> : courses.length ? courses.map((course) => <article className="course-library-row" key={course.id}><span className="document-icon document-plan"><BookOpen size={18} /></span><span className="course-library-info"><b>{course.title}</b><small>{course.subject} · {course.studyYear} · {course.meta}</small></span><label className="course-row-field course-row-subject"><span className="visually-hidden">Matière</span><input list="course-subject-suggestions" aria-label={`Matière de ${course.title}`} defaultValue={course.subject} onBlur={(event) => { const subject = event.currentTarget.value.trim(); if (subject && subject !== course.subject) void onSaveClassification(course.id, subject, course.studyYear); }} /></label><label className="course-row-field course-row-year"><span className="visually-hidden">Année d’étude</span><select aria-label={`Année d’étude de ${course.title}`} value={course.studyYear} onChange={(event) => { void onSaveClassification(course.id, course.subject, event.target.value); }}>{studyYearOptions.map((year) => <option key={year} value={year}>{year}</option>)}</select></label><span className="file-state"><i />{course.status}</span><button className="icon-button" type="button" onClick={() => { void onDownload(course.id); }} aria-label={`Télécharger ${course.title}`} title="Télécharger"><Download size={16} /></button><button className="icon-button" type="button" onClick={() => { void onDelete(course.id); }} aria-label={`Supprimer ${course.title}`} title="Supprimer"><Trash2 size={16} /></button><button className="secondary-button" type="button" onClick={() => onReview(course.id)}>Réviser <ArrowRight size={15} /></button></article>) : search ? <div className="empty-documents"><span className="empty-icon"><Search size={21} /></span><b>Aucun cours trouvé</b><p>Essaie avec un autre terme ou efface ta recherche.</p></div> : <div className="empty-documents first-course-empty"><span className="empty-icon"><BookOpen size={21} /></span><b>Ta bibliothèque commence ici</b><p>Ajoute un support PDF, Word ou une image de cours. Il sera stocké dans ton espace privé, classable par matière et année, puis téléchargeable. L’analyse et les fiches de révision viendront dans une prochaine étape. Taille maximale : 50 Mo par fichier.</p><button className="primary-button" type="button" disabled={saving} onClick={() => courseFileInput.current?.click()}><Upload size={16} /> Ajouter mon premier cours</button></div>}</div>
           </>
         )}
       </div>
@@ -836,6 +873,13 @@ function ChatView({
   onShowHistory: () => void;
 }) {
   const recentQuestions = ["Comment réduire la portée en zone C ?", "Quelle ambiance pour le séjour ?", "Faire le point sur le concept", "Quelles références pour une façade active ?"];
+  const [coursePickerOpen, setCoursePickerOpen] = useState(false);
+  const [courseSearch, setCourseSearch] = useState("");
+  const selectedCourses = generalCourses.filter((course) => selectedCourseIds.includes(course.id));
+  const matchingCourses = generalCourses.filter((course) =>
+    `${course.title} ${course.course} ${course.subject} ${course.studyYear}`.toLowerCase().includes(courseSearch.toLowerCase()),
+  );
+  const visibleMatchingCourses = matchingCourses.slice(0, 40);
   return (
     <div className="chat-layout">
       <section className="chat-panel" aria-label="Conversation avec ArchiProf">
@@ -862,7 +906,7 @@ function ChatView({
       </section>
       <aside className="chat-context-panel">
         <section className="context-card project-context-card"><div className="context-card-heading"><span className="context-icon context-icon-sage"><FolderKanban size={16} /></span><span>CONTEXTE DU PROJET</span><button type="button" aria-label="Plus d’options"><MoreHorizontal size={17} /></button></div><h3>{project.name}</h3><p>{project.summary}</p><div className="context-tags"><span>{project.type}</span><span>{project.location}</span></div><button className="context-link" type="button" onClick={() => onNavigate("notes")}>Voir les notes du projet <ArrowRight size={14} /></button></section>
-        <section className="context-card general-course-context"><div className="context-card-heading"><span className="context-icon context-icon-blue"><BookOpen size={16} /></span><span>COURS GÉNÉRAUX</span><span className="context-count">{selectedCourseIds.length}</span></div><p className="context-helper">Choisis les cours à utiliser dans cette conversation. Aucun n’est inclus par défaut.</p><div className="course-context-list">{generalCourses.map((course) => <label className="course-context-option" key={course.id}><input type="checkbox" checked={selectedCourseIds.includes(course.id)} onChange={() => onToggleCourse(course.id)} /><span><b>{course.course}</b><small>{course.title}</small></span></label>)}</div><p className="context-prototype-note">Sélection de démonstration · aucun document envoyé</p></section>
+        <section className="context-card general-course-context"><div className="context-card-heading"><span className="context-icon context-icon-blue"><BookOpen size={16} /></span><span>COURS GÉNÉRAUX</span><span className="context-count">{selectedCourseIds.length}</span></div><p className="context-helper">{selectedCourseIds.length ? "Cours associés à ce projet." : "Aucun cours associé à ce projet."}</p>{selectedCourses.length > 0 && <div className="course-context-list">{selectedCourses.map((course) => <div className="course-context-option" key={course.id}><span><b>{course.course}</b><small>{course.title}</small></span><button className="course-context-remove" type="button" aria-label={`Retirer ${course.title} du projet`} onClick={() => onToggleCourse(course.id)}><X size={14} /></button></div>)}</div>}<button className="context-link" type="button" onClick={() => setCoursePickerOpen((open) => !open)}>{coursePickerOpen ? "Fermer la sélection" : "Ajouter ou retirer des cours"}<ArrowRight size={14} /></button>{coursePickerOpen && <div className="course-context-picker"><input type="search" aria-label="Rechercher un cours général" placeholder="Rechercher un cours…" value={courseSearch} onChange={(event) => setCourseSearch(event.target.value)} /><div className="course-context-list">{visibleMatchingCourses.length ? visibleMatchingCourses.map((course) => <label className="course-context-option" key={course.id}><input type="checkbox" checked={selectedCourseIds.includes(course.id)} onChange={() => onToggleCourse(course.id)} /><span><b>{course.course}</b><small>{course.title} · {course.studyYear}</small></span></label>) : <p className="course-context-empty">{generalCourses.length ? "Aucun cours ne correspond à cette recherche." : "Ajoute d’abord des cours dans ta bibliothèque."}</p>}</div>{matchingCourses.length > visibleMatchingCourses.length && <small className="course-context-note">40 résultats affichés. Précise la recherche pour affiner.</small>}</div>}<p className="context-prototype-note">Association enregistrée · analyse documentaire à venir</p></section>
         <section className="context-card sources-card"><div className="context-card-heading"><span className="context-icon context-icon-clay"><LibraryBig size={16} /></span><span>SOURCES DU PROJET</span><button type="button" aria-label="Voir les documents" onClick={() => onNavigate("documents")}><ArrowRight size={16} /></button></div><div className="source-count"><b>{project.files.length}</b><span>documents associés</span></div><div className="source-mini-list">{project.files.slice(0, 3).map((file) => <div className="source-mini" key={file.id}><span className="mini-file-icon"><ProjectIcon kind={file.icon} /></span><span><b>{file.name}</b><small>{file.state}</small></span></div>)}</div><button className="context-link" type="button" onClick={() => onNavigate("documents")}>Ouvrir la bibliothèque <ArrowRight size={14} /></button></section>
         <section className="context-card history-card"><div className="context-card-heading"><span className="context-icon context-icon-blue"><Clock3 size={16} /></span><span>HISTORIQUE RÉCENT</span></div><div className="history-list">{recentQuestions.slice(0, showAllHistory ? 4 : 3).map((item, index) => <button type="button" className="history-item" key={item} onClick={() => document.getElementById(`message-${chat[Math.min(index * 2 + 1, chat.length - 1)]?.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}><span className="history-index">0{index + 1}</span><span><b>{item}</b><small>{index === 0 ? "Aujourd’hui · 10:46" : index === 1 ? "Hier · 16:12" : "Mardi · 09:30"}</small></span><ChevronRight size={15} /></button>)}</div><button className="context-link" type="button" onClick={onShowHistory}>{showAllHistory ? "Réduire l’historique" : "Voir l’historique complet"}<ArrowRight size={14} /></button></section>
       </aside>
@@ -916,9 +960,46 @@ function NotesView({ project, onToast }: { project: Project; onToast: (message: 
   );
 }
 
-function CreateProjectDialog({ name, type, saving, onName, onType, onClose, onSubmit }: { name: string; type: string; saving: boolean; onName: (value: string) => void; onType: (value: string) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void> }) {
+function CreateProjectDialog({ name, type, description, courses, coursesLoading, coursesError, courseSearch, selectedCourseIds, saving, onName, onType, onDescription, onCourseSearch, onToggleCourse, onClose, onSubmit }: {
+  name: string;
+  type: string;
+  description: string;
+  courses: CourseDocument[];
+  coursesLoading: boolean;
+  coursesError: string;
+  courseSearch: string;
+  selectedCourseIds: string[];
+  saving: boolean;
+  onName: (value: string) => void;
+  onType: (value: string) => void;
+  onDescription: (value: string) => void;
+  onCourseSearch: (value: string) => void;
+  onToggleCourse: (courseId: string) => void;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
+}) {
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><div className="modal-header"><div><span className="modal-eyebrow">NOUVEL ESPACE DE TRAVAIL</span><h2 id="create-title">Donne forme à une idée.</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="Fermer" disabled={saving}><X size={19} /></button></div><p className="modal-copy">Le projet sera privé à ton compte. Documents, notes et conversations ne sont pas encore sauvegardés.</p><form onSubmit={onSubmit}><label className="form-field"><span>Nom du projet</span><input autoFocus value={name} onChange={(event) => onName(event.target.value)} placeholder="Ex. Maison de quartier" required maxLength={80} disabled={saving} /></label><label className="form-field"><span>Type de projet</span><select value={type} onChange={(event) => onType(event.target.value)} disabled={saving}><option>Projet d’architecture</option><option>Logement collectif</option><option>Équipement public</option><option>Réhabilitation</option><option>Projet libre</option></select></label><div className="modal-notice"><Sparkles size={16} /><span>Le projet sera enregistré dans ton compte Supabase.</span></div><div className="modal-actions"><button className="secondary-button" type="button" onClick={onClose} disabled={saving}>Annuler</button><button className="primary-button" type="submit" disabled={!name.trim() || saving}>{saving ? "Enregistrement…" : "Créer le projet"} <ArrowRight size={15} /></button></div></form></section></div>
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
+      <section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-title">
+        <div className="modal-header"><div><span className="modal-eyebrow">NOUVEL ESPACE DE TRAVAIL</span><h2 id="create-title">Donne forme à une idée.</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="Fermer" disabled={saving}><X size={19} /></button></div>
+        <p className="modal-copy">Le projet sera privé à ton compte. Documents, notes et conversations ne sont pas encore sauvegardés.</p>
+        <form onSubmit={onSubmit}>
+          <label className="form-field"><span>Nom du projet</span><input autoFocus value={name} onChange={(event) => onName(event.target.value)} placeholder="Ex. Maison de quartier" required maxLength={80} disabled={saving} /></label>
+          <label className="form-field"><span>Type de projet</span><select value={type} onChange={(event) => onType(event.target.value)} disabled={saving}><option>Projet d’architecture</option><option>Logement collectif</option><option>Équipement public</option><option>Réhabilitation</option><option>Projet libre</option></select></label>
+          <label className="form-field"><span>Description / contexte</span><textarea value={description} onChange={(event) => onDescription(event.target.value)} placeholder="Décris brièvement le sujet, le lieu ou les objectifs du projet…" rows={3} maxLength={1000} disabled={saving} /></label>
+          <section className="project-course-picker" aria-labelledby="project-course-title">
+            <div className="project-course-heading"><b id="project-course-title">Cours généraux associés</b><span>{selectedCourseIds.length} sélectionné{selectedCourseIds.length > 1 ? "s" : ""}</span></div>
+            <label className="form-field"><span className="visually-hidden">Rechercher un cours</span><input type="search" value={courseSearch} onChange={(event) => onCourseSearch(event.target.value)} placeholder="Rechercher par titre ou matière" disabled={saving} /></label>
+            <div className="project-course-options">
+              {coursesLoading ? <p role="status">Chargement des cours…</p> : coursesError ? <p role="alert">La bibliothèque de cours est indisponible.</p> : courses.length ? courses.map((course) => <label className="project-course-option" key={course.id}><input type="checkbox" checked={selectedCourseIds.includes(course.id)} onChange={() => onToggleCourse(course.id)} disabled={saving} /><span><b>{course.title}</b><small>{course.course} · {course.studyYear}</small></span></label>) : <p>{courseSearch ? "Aucun cours ne correspond à cette recherche." : "Aucun cours général disponible. Tu pourras en ajouter depuis la bibliothèque."}</p>}
+            </div>
+            <small className="project-course-hint">Facultatif. Seuls les cours sélectionnés seront associés à ce projet.</small>
+          </section>
+          <div className="modal-notice"><Sparkles size={16} /><span>La description sera conservée comme contexte. Les cours sont associés au projet, mais ne sont pas encore analysés par l’assistant.</span></div>
+          <div className="modal-actions"><button className="secondary-button" type="button" onClick={onClose} disabled={saving}>Annuler</button><button className="primary-button" type="submit" disabled={!name.trim() || saving}>{saving ? "Enregistrement…" : "Créer le projet"} <ArrowRight size={15} /></button></div>
+        </form>
+      </section>
+    </div>
   );
 }
 

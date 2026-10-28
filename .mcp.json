@@ -3,6 +3,10 @@
     "trello": {
       "type": "http",
       "url": "https://mcp.trello.com/v1"
+    },
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=lnskhsyowqztxbsxhgga&features=docs,account,database,debugging,development,functions,branching"
     }
   }
 }
