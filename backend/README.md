@@ -81,17 +81,32 @@ create table if not exists chunks (
  - POST /v1/retrieval/search (Bearer Supabase Auth requis)
  - POST /v1/ingestion/chunks (Bearer Supabase Auth requis; chunks prives uniquement)
  - POST /v1/assistant/answer (Bearer Supabase Auth requis)
- - Ce module n'est pas encore expose par l'API et ne persiste ni fichiers ni chunks. Son intégration attend les métadonnées de document et le stockage objet.
+ - POST /v1/courses/{course_id}/extract (Bearer Supabase Auth requis; cours privé existant)
 
 ## Traitement PDF (incrément initial)
-- `app/document_processing.py` extrait le texte des PDF et produit des chunks indépendants par page, avec numéro de page et index du chunk.
+- `app/extraction/pdf.py` extrait le texte des PDF et produit des chunks indépendants par page, avec numéro de page et index du chunk.
 - Les limites par défaut sont de 1 200 caractères par chunk avec 160 caractères de recouvrement ; elles sont configurables par appel.
 - Les PDF invalides, vides, protégés ou sans texte extractible sont rejetés avec une erreur explicite. Les scans nécessitent une étape OCR, non incluse dans cet incrément.
-- Ce module n'est pas encore exposé par l'API et ne persiste ni fichiers ni chunks. Son intégration attend l'authentification, les métadonnées de document et le stockage objet.
+- `app/upload/courses.py` expose l'extraction d'un cours déjà envoyé dans le bucket privé `user-courses`. Le propriétaire est vérifié et le JWT utilisateur est transmis à Storage et PostgREST.
+- Appliquer `sql/course_extraction.sql` après `sql/projects.sql`, `sql/user_courses.sql` et `sql/project_courses.sql`. Cette migration ajoute le statut et l'erreur d'extraction à `user_courses`, ainsi que `course_chunks` avec RLS et suppression en cascade.
+- L'enregistrement des chunks et du statut est transactionnel. Une relance remplace les chunks sans doublons ; une insertion invalide annule la transaction. Un résultat d'échec supprime les anciens chunks et conserve une raison explicite, sans supprimer le fichier.
+- Le retrieval inclut les cours sélectionnés dans `project_course_links`, sans copier leurs chunks par projet. `app/extraction/store.py` charge toutes les pages de résultats sous RLS.
+- L'upload frontend déclenche automatiquement l'extraction. Les statuts persistés sont `pending`, `extracted`, `failed`, `unsupported`. « Réessayer » n'apparaît que pour les PDF en attente ou en échec, jamais après succès.
+- L'extraction est synchrone et limitée à 50 Mio par fichier. Le frontend interrompt son attente après 120 secondes, sans annuler un traitement déjà commencé sur le serveur. La reprise reste possible ; une file de traitement et des limites CPU/mémoire sont à prévoir avant une ouverture publique.
 - `app/embeddings.py` fournit un adaptateur local FastEmbed, configuré par `FASTEMBED_MODEL`. Le modèle initial est multilingue et produit des vecteurs de 384 dimensions ; il est téléchargé au premier lancement puis exécuté localement, sans clé ni facturation par requête.
 - Le fournisseur du LLM de génération reste à choisir et est indépendant du provider d'embeddings.
 - Les embeddings ne sont pas encore persistés ni utilisés pour le retrieval. Ne pas activer la lecture anonyme Supabase pour des documents étudiants.
- - Les embeddings ne sont pas encore persistés ni utilisés pour le retrieval. Ne pas réintroduire d'accès anonyme Supabase aux chunks privés.
+
+## Organisation par fonctionnalité
+- `app/extraction/` : parseur PDF, découpage et récupération des extractions.
+- `app/upload/` : orchestration des documents privés et routes associées.
+- `app/main.py` assemble les routes ; ajouter les prochaines fonctionnalités dans leur package plutôt qu'à la racine de `app`.
+- Les modules historiques seront déplacés lorsque leur fonctionnalité sera retravaillée. DOCX, EPUB et OCR auront des parseurs séparés, sans supposer que tous les formats ont des pages.
+
+## Vérification de l'extraction
+- Depuis `backend`, lancer `.\.venv\Scripts\python.exe -m pytest -q`.
+- `tests/course_extraction.sql` teste les transactions, la RLS entre deux comptes, les privilèges anonymes, les liens aux projets et la suppression en cascade. L'exécuter avec `psql -v ON_ERROR_STOP=1 -f tests/course_extraction.sql` sur une base de test où les schémas Auth/Storage et les migrations sont installés ; les données de test sont annulées par `rollback`.
+- Parcours navigateur validé avec un compte dédié : upload automatique, PDF multipage, erreur PDF invalide, image stockée sans extraction, reprise, rechargement, association au projet et recherche avec provenance.
 
 ## Contrats v1
 - metadata: app/schemas.py -> ChunkMetadata

@@ -38,10 +38,11 @@ def get_current_user(
 
     token = credentials.credentials
     try:
-        user = create_client(
+        response = create_client(
             settings.supabase_url,
             settings.supabase_publishable_key,
         ).auth.get_user(jwt=token)
+        user = response.user if response is not None else None
     except AuthApiError as exc:
         if 400 <= exc.status < 500 and exc.status != 429:
             raise HTTPException(

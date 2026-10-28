@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
+from gotrue.types import User, UserResponse
 
 from app import auth
 from app.config import Settings
@@ -22,9 +23,12 @@ def test_current_user_validates_token_with_supabase(monkeypatch: pytest.MonkeyPa
     calls: list[tuple[str, str, str]] = []
 
     class FakeAuth:
-        def get_user(self, *, jwt: str) -> SimpleNamespace:
+        def get_user(self, *, jwt: str) -> UserResponse:
             calls.append(("get_user", jwt, ""))
-            return SimpleNamespace(id="user-123")
+            return UserResponse(user=User(
+                id="user-123", aud="authenticated", app_metadata={}, user_metadata={},
+                created_at="2026-10-28T00:00:00Z",
+            ))
 
     class FakeClient:
         auth = FakeAuth()
@@ -76,3 +80,13 @@ def test_current_user_fails_closed_without_supabase_configuration(
         )
 
     assert error.value.status_code == 503
+
+
+def test_current_user_rejects_empty_auth_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(auth, "get_settings", lambda: Settings("https://example.supabase.co", "test-key", "chunks", "test-model"))
+    monkeypatch.setattr(auth, "create_client", lambda *args: SimpleNamespace(
+        auth=SimpleNamespace(get_user=lambda **kwargs: SimpleNamespace(user=None)),
+    ))
+    with pytest.raises(HTTPException) as error:
+        auth.get_current_user(HTTPAuthorizationCredentials(scheme="Bearer", credentials="user-token"))
+    assert error.value.status_code == 401

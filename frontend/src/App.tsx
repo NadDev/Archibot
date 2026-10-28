@@ -34,13 +34,15 @@ import type { Session } from "@supabase/supabase-js";
 
 import AuthScreen from "./AuthScreen";
 import { supabase } from "./supabase";
+import { courseColumns, extractionLabels, mapCourse, uploadCourse, type CourseDocument, type CourseRow } from "./features/upload/courses";
+import { extractCourse } from "./features/extraction/courses";
+import CourseExtractionStatus from "./features/extraction/CourseExtractionStatus";
 
 const assistantPortrait = new URL("../../docs/image.png", import.meta.url).href;
 
 type Section = "chat" | "documents" | "exercises" | "notes";
 type ProjectStatus = "En cours" | "À reprendre" | "Terminé";
 type ProjectNote = { id: string; label: string; text: string; created: string; tone: "clay" | "sage" | "blue" };
-type CourseDocument = { id: string; title: string; course: string; subject: string; studyYear: string; meta: string; status: string; storagePath: string };
 type Project = {
   id: string;
   name: string;
@@ -65,16 +67,6 @@ type ProjectRow = {
   term: string;
   summary: string;
 };
-type CourseRow = {
-  id: string;
-  title: string;
-  course: string;
-  subject: string;
-  study_year: string;
-  storage_path: string;
-  file_size: number;
-  created_at: string;
-};
 type ChatItem = { id: number; role: "student" | "assistant"; text: string; time: string };
 
 function getErrorMessage(error: unknown): string {
@@ -94,15 +86,6 @@ function getTableSetupMessage(error: unknown, tableLabel: string, sqlFile: strin
 }
 
 const studyYearOptions = ["1re année", "2e année", "Transversale", "Non précisée"];
-const courseMimeTypes: Record<string, string> = {
-  pdf: "application/pdf",
-  doc: "application/msword",
-  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  webp: "image/webp",
-};
 
 const suggestedQuestions = [
   "Comment améliorer la lumière naturelle ?",
@@ -129,19 +112,6 @@ function mapProject(row: ProjectRow): Project {
     summary: row.summary,
     files: [],
     notes: [],
-  };
-}
-
-function mapCourse(row: CourseRow): CourseDocument {
-  return {
-    id: row.id,
-    title: row.title,
-    course: row.course,
-    subject: row.subject,
-    studyYear: row.study_year,
-    meta: `${(row.file_size / (1024 * 1024)).toFixed(1)} Mo · Ajouté le ${new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short" }).format(new Date(row.created_at))}`,
-    status: "Stocké · non indexé",
-    storagePath: row.storage_path,
   };
 }
 
@@ -186,6 +156,8 @@ function WorkspaceApp({ displayName, greetingName, userEmail, userId, onSignOut 
   const [coursesError, setCoursesError] = useState("");
   const [coursesReloadKey, setCoursesReloadKey] = useState(0);
   const [courseSaving, setCourseSaving] = useState(false);
+  const [extractingCourseIds, setExtractingCourseIds] = useState<string[]>([]);
+  const extractionRequests = useRef(new Set<string>());
   const [courseSearch, setCourseSearch] = useState("");
   const [courseSubjectFilter, setCourseSubjectFilter] = useState("all");
   const [courseYearFilter, setCourseYearFilter] = useState("all");
@@ -244,7 +216,7 @@ function WorkspaceApp({ displayName, greetingName, userEmail, userId, onSignOut 
         if (!supabase) throw new Error("La connexion à Supabase n’est pas configurée.");
         const { data, error } = await supabase
           .from("user_courses")
-          .select("id, title, course, subject, study_year, storage_path, file_size, created_at")
+          .select(courseColumns)
           .order("created_at", { ascending: false });
         if (error) throw error;
         if (isCurrent) setGeneralCourses((data ?? []).map((row) => mapCourse(row as CourseRow)));
@@ -415,6 +387,25 @@ function WorkspaceApp({ displayName, greetingName, userEmail, userId, onSignOut 
     showToast("Fichier ajouté à la maquette uniquement — aucun envoi effectué");
   }
 
+  async function runCourseExtraction(id: string) {
+    if (extractionRequests.current.has(id)) return;
+    extractionRequests.current.add(id);
+    setExtractingCourseIds((ids) => [...ids, id]);
+    setGeneralCourses((items) => items.map((course) => course.id === id
+      ? { ...course, status: "Extraction en cours…", extractionError: null } : course));
+    try {
+      const result = await extractCourse(id);
+      setGeneralCourses((items) => items.map((course) => course.id === id
+        ? { ...course, status: extractionLabels[result.status], extractionStatus: result.status, extractionError: result.error } : course));
+    } catch (error) {
+      setGeneralCourses((items) => items.map((course) => course.id === id
+        ? { ...course, status: "Extraction à relancer", extractionStatus: "failed", extractionError: getErrorMessage(error) } : course));
+    } finally {
+      extractionRequests.current.delete(id);
+      setExtractingCourseIds((ids) => ids.filter((courseId) => courseId !== id));
+    }
+  }
+
   async function addGeneralCourseFiles(files: FileList | null) {
     if (!files?.length) return;
     if (!supabase) {
@@ -422,46 +413,21 @@ function WorkspaceApp({ displayName, greetingName, userEmail, userId, onSignOut 
       return;
     }
     const subject = newCourseSubject.trim() || "À classer";
-    const additions: CourseDocument[] = [];
+    let uploaded = 0;
     let failedUploads = 0;
     setCourseSaving(true);
     try {
       for (const file of Array.from(files)) {
-        const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
-        const contentType = courseMimeTypes[extension];
-        if (!contentType || file.size <= 0 || file.size > 50 * 1024 * 1024) {
+        try {
+          const course = await uploadCourse(file, userId, subject, newCourseYear);
+          uploaded += 1;
+          setGeneralCourses((items) => [course, ...items]);
+          await runCourseExtraction(course.id);
+        } catch {
           failedUploads += 1;
-          continue;
         }
-
-        const courseId = crypto.randomUUID();
-        const storagePath = `${userId}/${courseId}.${extension}`;
-        const { error: uploadError } = await supabase.storage
-          .from("user-courses")
-          .upload(storagePath, file, { contentType, upsert: false });
-        if (uploadError) {
-          failedUploads += 1;
-          continue;
-        }
-
-        const { data, error } = await supabase.from("user_courses").insert({
-          title: file.name,
-          course: subject,
-          subject,
-          study_year: newCourseYear,
-          storage_path: storagePath,
-          content_type: contentType,
-          file_size: file.size,
-        }).select("id, title, course, subject, study_year, storage_path, file_size, created_at").single();
-        if (error) {
-          await supabase.storage.from("user-courses").remove([storagePath]);
-          failedUploads += 1;
-          continue;
-        }
-        additions.push(mapCourse(data as CourseRow));
       }
-      if (additions.length) setGeneralCourses((items) => [...additions, ...items]);
-      showToast(failedUploads ? `${additions.length} cours ajouté(s), ${failedUploads} échec(s).` : `${additions.length} cours ajouté(s).`);
+      showToast(failedUploads ? `${uploaded} cours ajouté(s), ${failedUploads} échec(s) d’envoi.` : `${uploaded} cours ajouté(s).`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erreur inconnue";
       showToast(`Envoi interrompu : ${message}`);
@@ -596,6 +562,8 @@ function WorkspaceApp({ displayName, greetingName, userEmail, userId, onSignOut 
               onExitReview={() => setReviewingCourseId(null)}
               onToast={showToast}
               onRetry={() => setCoursesReloadKey((key) => key + 1)}
+              onExtract={runCourseExtraction}
+              extractingCourseIds={extractingCourseIds}
             />
           ) : (
             <ProjectsHome
@@ -752,6 +720,8 @@ function GeneralCoursesView({
   saving,
   onDownload,
   onDelete,
+  onExtract,
+  extractingCourseIds,
 }: {
   courses: CourseDocument[];
   allCourses: CourseDocument[];
@@ -778,6 +748,8 @@ function GeneralCoursesView({
   onExitReview: () => void;
   onToast: (message: string) => void;
   onRetry: () => void;
+  onExtract: (id: string) => void | Promise<void>;
+  extractingCourseIds: string[];
 }) {
   const courseFileInput = useRef<HTMLInputElement>(null);
   const subjectOptions = Array.from(new Set([...allCourses.map((course) => course.subject), "À classer"])).sort((left, right) => left.localeCompare(right, "fr"));
@@ -803,7 +775,7 @@ function GeneralCoursesView({
           <section className="course-review-panel">
             <button className="text-button" type="button" onClick={onExitReview}><ArrowLeft size={15} /> Tous les cours</button>
             <div className="feature-page-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> {reviewingCourse.course.toUpperCase()}</div><h2>{reviewingCourse.title}</h2><p>Révision indépendante de tes projets · {reviewingCourse.status}</p></div></div>
-            <article className="answer-section"><div className="answer-section-title"><span className="answer-section-mark">01</span><span>À retenir</span><span className="source-tag">COURS GÉNÉRAL</span></div><p>Le support est stocké dans ton espace privé. Sa lecture et sa synthèse seront disponibles lorsque le pipeline documentaire sera connecté.</p></article>
+            <CourseExtractionStatus course={reviewingCourse} busy={extractingCourseIds.includes(reviewingCourse.id)} onExtract={onExtract} />
             <div className="course-review-actions"><button className="secondary-button" type="button" onClick={() => onToast("La synthèse sera disponible après connexion de l’API documentaire")}>Générer une synthèse</button><button className="primary-button" type="button" onClick={() => onToast("Le quiz sera disponible après connexion de l’API pédagogique")}>Lancer un quiz</button></div>
           </section>
         ) : (

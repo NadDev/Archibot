@@ -6,6 +6,7 @@ from typing import Iterable, List
 from supabase import Client, create_client
 
 from .config import Settings
+from .extraction.store import project_course_chunks
 from .schemas import ChunkMetadata, ChunkVisibility, SourceType
 
 
@@ -98,6 +99,7 @@ class SupabaseChunkStore(ChunkStore):
             (row["text"], self._metadata(row, ChunkVisibility.SHARED))
             for row in (shared_response.data or [])
         )
+        result.extend(project_course_chunks(self._client, project_id))
         return [
             (text, metadata)
             for text, metadata in result

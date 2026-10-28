@@ -9,6 +9,7 @@ from .auth import AuthenticatedUser, get_current_user
 from .chunk_store import InMemoryChunkStore, SupabaseChunkStore
 from .config import get_settings
 from .retrieval import retrieve_chunks
+from .upload.courses import router as courses_router
 from .schemas import (
     AskRequest,
     IngestRequest,
@@ -23,6 +24,7 @@ from .schemas import (
 )
 
 app = FastAPI(title="Archibot API", version="0.1.0")
+app.include_router(courses_router)
 settings = get_settings()
 app.add_middleware(
     CORSMiddleware,

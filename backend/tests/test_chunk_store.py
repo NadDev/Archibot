@@ -62,6 +62,7 @@ class FakeQuery:
         self.rows = rows
         self.filters: list[tuple[str, str]] = []
         self.inserted: list[dict[str, object]] | None = None
+        self.bounds: tuple[int, int] | None = None
 
     def select(self, columns: str) -> FakeQuery:
         return self
@@ -75,7 +76,15 @@ class FakeQuery:
         return self
 
     def execute(self) -> SimpleNamespace:
-        return SimpleNamespace(data=self.rows)
+        rows = self.rows if self.bounds is None else self.rows[self.bounds[0]:self.bounds[1] + 1]
+        return SimpleNamespace(data=rows)
+
+    def order(self, column: str) -> FakeQuery:
+        return self
+
+    def range(self, start: int, end: int) -> FakeQuery:
+        self.bounds = (start, end)
+        return self
 
 
 class FakePostgrest:
@@ -92,9 +101,15 @@ class FakeSupabaseClient:
         self.queries = {
             "chunks": FakeQuery([]),
             "architecture_knowledge_chunks": FakeQuery([]),
+            "project_course_chunks": FakeQuery([]),
         }
+        self.rpc_calls = []
 
     def table(self, name: str) -> FakeQuery:
+        return self.queries[name]
+
+    def rpc(self, name, params):
+        self.rpc_calls.append((name, params))
         return self.queries[name]
 
 
@@ -170,3 +185,29 @@ def test_supabase_store_reads_page_provenance(monkeypatch: pytest.MonkeyPatch) -
 
     assert chunks[0][1].page_number == 3
     assert chunks[0][1].chunk_index == 2
+
+
+def test_supabase_store_reads_all_linked_course_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_client = FakeSupabaseClient()
+    project_id = "00000000-0000-0000-0000-000000000001"
+    fake_client.queries["project_course_chunks"].rows = [
+        {
+            "text": f"page {page}",
+            "course_id": "course-source",
+            "page_number": page,
+            "chunk_index": 1,
+            "ingested_at": "2026-10-28T00:00:00+00:00",
+        }
+        for page in range(1, 502)
+    ]
+    monkeypatch.setattr(chunk_store_module, "create_client", lambda url, key: fake_client)
+    settings = Settings("https://example.supabase.co", "test-key", "chunks", "test-model")
+
+    chunks = SupabaseChunkStore(settings, "user-jwt").list_chunks(project_id, "user-a")
+
+    assert len(chunks) == 501
+    assert chunks[-1][1].page_number == 501
+    assert chunks[-1][1].source_id == "course-source"
+    assert chunks[-1][1].project_id == project_id
+    assert chunks[-1][1].visibility == ChunkVisibility.PRIVATE
+    assert fake_client.rpc_calls == [("project_course_chunks", {"target_project_id": project_id})] * 2

@@ -7,6 +7,8 @@ from app.auth import AuthenticatedUser, get_current_user
 from app.chunk_store import InMemoryChunkStore
 from app.main import _memory_chunk_stores, app
 from app.schemas import ChunkMetadata, SourceType
+from app.upload.courses import CourseExtractionService, get_course_extraction_service
+from test_document_processing import FakeCourseClient, _pdf_with_text
 
 client = TestClient(app)
 
@@ -100,6 +102,37 @@ def test_retrieval_requires_authentication() -> None:
     )
 
     assert response.status_code == 401
+
+
+def test_course_extraction_requires_authentication() -> None:
+    app.dependency_overrides.clear()
+    response = client.post("/v1/courses/00000000-0000-0000-0000-000000000001/extract")
+    assert response.status_code == 401
+
+
+def test_course_extraction_endpoint_returns_persisted_result() -> None:
+    storage_client = FakeCourseClient(_pdf_with_text("first page", "second page"))
+    app.dependency_overrides[get_course_extraction_service] = lambda: CourseExtractionService(storage_client, "user-a")
+    course_id = storage_client.rows[0]["id"]
+
+    response = client.post(f"/v1/courses/{course_id}/extract")
+
+    assert response.status_code == 200
+    assert response.json() == {"course_id": course_id, "status": "extracted", "chunk_count": 2, "error": None}
+    assert len(storage_client.saved["result_chunks"]) == 2
+
+
+def test_course_extraction_endpoint_masks_persistence_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    storage_client = FakeCourseClient(_pdf_with_text("first page"))
+
+    def fail_save(*args):
+        raise RuntimeError("private infrastructure details")
+
+    monkeypatch.setattr(storage_client, "rpc", fail_save)
+    app.dependency_overrides[get_course_extraction_service] = lambda: CourseExtractionService(storage_client, "user-a")
+    response = client.post(f"/v1/courses/{storage_client.rows[0]['id']}/extract")
+    assert response.status_code == 502
+    assert "private infrastructure" not in response.text
 
 
 def test_private_course_chunks_are_not_visible_to_another_user() -> None:

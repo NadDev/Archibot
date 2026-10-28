@@ -33,3 +33,15 @@ def test_chunk_page_provenance_is_migrated_for_private_and_shared_corpora() -> N
     assert "alter table public.architecture_knowledge_chunks" in sql
     assert initial_sql.count("page_number integer") == 2
     assert initial_sql.count("chunk_index integer") == 2
+
+
+def test_course_extraction_uses_owner_rls_and_atomic_replacement() -> None:
+    sql = (Path(__file__).parents[1] / "sql" / "course_extraction.sql").read_text(encoding="utf-8")
+    assert "alter table public.course_chunks enable row level security;" in sql
+    assert "references public.user_courses (id, owner_id) on delete cascade" in sql
+    assert "revoke all privileges on table public.course_chunks from anon, authenticated;" in sql
+    assert "security definer" not in sql
+    assert sql.count("security invoker set search_path = ''") == 2
+    assert "owner_id = auth.uid() for update" in sql
+    assert "delete from public.course_chunks" in sql
+    assert "join public.project_course_links" in sql

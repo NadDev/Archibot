@@ -61,6 +61,13 @@
 - Feature 3.3.2: Métadonnées minimales
 - Feature 3.3.3: Embeddings + indexation
 
+### Proposition Epic 3.4 - Formats documentaires complémentaires
+- Feature 3.4.1: DOCX natif avec titres, paragraphes, tableaux et provenance par section ; conversion DOC historique isolée en sous-incrément.
+- Feature 3.4.2: EPUB avec provenance chapitre/section, validation des archives et extension des formats d'upload.
+- Feature 3.4.3: Extraction de données structurées avec schéma et provenance, distincte du texte brut et de l'OCR.
+- Dépendance : contrat d'extraction commun, statut et erreurs par document. Les images/photos et scans restent dans 3.1.2/3.1.3 pour leur ingestion/OCR.
+- Statut : proposition de découpage ; aucune prise en charge Word/EPUB/OCR n'est annoncée comme livrée.
+
 ## Lot/Batch 4 - Assistant RAG métier architecture
 ### Epic 4.1 - Retrieval et génération contextualisée
 - Feature 4.1.1: Retrieval top-k avec filtres
@@ -180,12 +187,15 @@ Les lots existants sont le decoupage produit. La sequence ci-dessous les rend ex
 
 ### Premier increment technique selectionne
 - Lot 3.1.3 : extraction PDF textuelle page par page et decoupage en chunks avec numero de page.
-- Cette bibliotheque de traitement est testee avant son exposition par API ; upload public et persistance attendent l'authentification, le stockage et le contrat de document du Lot 2.
+- Cette bibliotheque de traitement est desormais reliee aux uploads de cours prives via une route authentifiee, avec persistance transactionnelle et etat consultable. Aucun upload public n'est expose.
 - Criteres : PDF texte valide -> chunks non vides rattaches a une page ; PDF invalide, vide ou sans texte -> erreur explicite ; taille et recouvrement des chunks valides.
 
 ### Etat et prochaine etape technique (2026-10-28)
 - Valide : authentification, stockage de projets/cours prives et RLS ; l'utilisateur a confirme l'isolation entre deux comptes reels.
 - Valide : l'API protege retrieval/ingestion/assistant par bearer JWT et interdit l'ecriture du corpus commun.
 - Implemente : extraction PDF par page et chunking ; `page_number`/`chunk_index` sont transportes par le schema, persistes et restitues au retrieval. Migration appliquee au projet Supabase.
-- Reste a faire pour le Lot 3 : brancher les fichiers uploades a l'extraction et a la persistance des chunks, verifier le proprietaire, et exposer l'etat d'indexation ; OCR des scans ensuite.
-- Gate : parcours bout-en-bout avec citation de page et isolation entre comptes avant de passer aux embeddings et au retrieval vectoriel.
+- Valide : extraction automatique apres upload, controle du proprietaire sur Storage/PostgREST, persistance atomique dans `course_chunks`, reprise sans doublon et statut/erreur conserves. Migration `course_extraction.sql` appliquee.
+- Gate PDF texte validee : parcours navigateur reel du compte de test jusqu'au retrieval avec pages ; tests SQL natifs PostgreSQL 18 pour isolation, rollback et suppression. Correctif Auth : lecture de `UserResponse.user` verifiee avec le modele du SDK.
+- UX : pas d'action d'extraction technique apres succes ; « Reessayer » uniquement en attente ou apres echec.
+- Organisation : nouveaux modules backend/frontend regroupes dans des dossiers de fonctionnalite (`extraction`, `upload`).
+- Reste pour 3.1.3 : OCR photos/scans, rapports complets de qualite/duree et limites de traitement ; ensuite formats complementaires proposes en 3.4, puis embeddings/retrieval vectoriel. Ne pas marquer la carte 3.1.3 terminee.

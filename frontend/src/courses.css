@@ -8,7 +8,11 @@
 .course-filter select{width:100%;font-weight:400}
 .course-library-row .course-library-info small{color:#798278}
 .course-library-row .file-state{justify-self:start}
-.course-library-row{grid-template-columns:36px minmax(140px,1fr) minmax(120px,.55fr) minmax(115px,.5fr) minmax(125px,auto) auto;gap:8px}
+.course-library-row{grid-template-columns:36px minmax(100px,1fr) minmax(90px,.55fr) minmax(90px,.5fr) minmax(90px,.6fr) auto auto auto;gap:8px}
+.course-library-row .file-state{white-space:normal;overflow-wrap:anywhere;line-height:1.5}
+.course-extraction-status{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0;font-size:13px}
+.course-extraction-status p{flex-basis:100%;margin:0;color:#9a3434;overflow-wrap:anywhere}
+.course-extraction-status button:disabled{opacity:.6;cursor:wait}
 .course-row-field{min-width:0}
 .course-row-field select{width:100%}
 .course-row-field input{width:100%}
