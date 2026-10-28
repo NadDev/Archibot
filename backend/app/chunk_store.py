@@ -1,13 +1,26 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Iterable, List
+from typing import Iterable, List, Literal, cast
 
 from supabase import Client, create_client
 
 from .config import Settings
 from .extraction.store import project_course_chunks
 from .schemas import ChunkMetadata, ChunkVisibility, SourceType
+
+
+LocatorType = Literal["page", "slide", "section", "chapter"]
+
+
+def _optional_int(value: object) -> int | None:
+    return value if isinstance(value, int) else None
+
+
+def _optional_locator_type(value: object) -> LocatorType | None:
+    if value in {"page", "slide", "section", "chapter"}:
+        return cast(LocatorType, value)
+    return None
 
 
 class ChunkStore:
@@ -80,14 +93,14 @@ class SupabaseChunkStore(ChunkStore):
     ) -> List[tuple[str, ChunkMetadata]]:
         private_response = (
             self._client.table(self._table)
-            .select("text,source_type,source_id,project_id,doc_version,locality,page_number,chunk_index,ingested_at")
+            .select("text,source_type,source_id,project_id,doc_version,locality,page_number,chunk_index,locator_type,locator,source_order,ingested_at")
             .eq("project_id", project_id)
             .eq("owner_id", owner_id)
             .execute()
         )
         shared_response = (
             self._client.table("architecture_knowledge_chunks")
-            .select("text,source_id,doc_version,locality,page_number,chunk_index,ingested_at")
+            .select("text,source_id,doc_version,locality,page_number,chunk_index,locator_type,locator,source_order,ingested_at")
             .execute()
         )
 
@@ -132,8 +145,11 @@ class SupabaseChunkStore(ChunkStore):
             project_id=project_id,
             doc_version=str(row["doc_version"]),
             locality=str(row["locality"]) if row.get("locality") is not None else None,
-            page_number=int(row["page_number"]) if row.get("page_number") is not None else None,
-            chunk_index=int(row["chunk_index"]) if row.get("chunk_index") is not None else None,
+            page_number=_optional_int(row.get("page_number")),
+            chunk_index=_optional_int(row.get("chunk_index")),
+            locator_type=_optional_locator_type(row.get("locator_type")),
+            locator=str(row["locator"]) if row.get("locator") is not None else None,
+            source_order=_optional_int(row.get("source_order")),
             ingested_at=ingested_at,
             visibility=visibility,
         )
@@ -154,6 +170,9 @@ class SupabaseChunkStore(ChunkStore):
                     "locality": metadata.locality,
                     "page_number": metadata.page_number,
                     "chunk_index": metadata.chunk_index,
+                    "locator_type": metadata.locator_type,
+                    "locator": metadata.locator,
+                    "source_order": metadata.source_order,
                     "ingested_at": metadata.ingested_at.isoformat(),
                 }
             )

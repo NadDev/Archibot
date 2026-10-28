@@ -1,52 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from io import BytesIO
 
 from pypdf import PdfReader
-
-
-class DocumentProcessingError(ValueError):
-    pass
-
-
-@dataclass(frozen=True)
-class DocumentChunk:
-    page_number: int
-    chunk_index: int
-    text: str
-
-
-def chunk_text(text: str, *, max_chars: int = 1200, overlap_chars: int = 160) -> list[str]:
-    if max_chars < 1:
-        raise ValueError("max_chars must be positive")
-    if overlap_chars < 0 or overlap_chars >= max_chars:
-        raise ValueError("overlap_chars must be between zero and max_chars")
-
-    normalized = " ".join(text.split())
-    if not normalized:
-        return []
-
-    chunks: list[str] = []
-    start = 0
-    while start < len(normalized):
-        end = min(start + max_chars, len(normalized))
-        if end < len(normalized):
-            boundary = normalized.rfind(" ", start, end)
-            if boundary > start:
-                end = boundary
-
-        chunk = normalized[start:end].strip()
-        if chunk:
-            chunks.append(chunk)
-        if end >= len(normalized):
-            break
-
-        next_start = max(start + 1, end - overlap_chars)
-        overlap_boundary = normalized.find(" ", next_start, end)
-        start = overlap_boundary + 1 if overlap_boundary >= 0 else end
-
-    return chunks
+from .base import DocumentChunk, DocumentProcessingError, chunk_text
 
 
 def extract_pdf_chunks(
@@ -68,7 +25,14 @@ def extract_pdf_chunks(
             text = page.extract_text() or ""
             page_chunks = chunk_text(text, max_chars=max_chars, overlap_chars=overlap_chars)
             chunks.extend(
-                DocumentChunk(page_number=page_number, chunk_index=index, text=chunk)
+                DocumentChunk(
+                    page_number=page_number,
+                    chunk_index=index,
+                    text=chunk,
+                    locator_type="page",
+                    locator=f"Page {page_number}",
+                    source_order=page_number,
+                )
                 for index, chunk in enumerate(page_chunks, start=1)
             )
     except DocumentProcessingError:

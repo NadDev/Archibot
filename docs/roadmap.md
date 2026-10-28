@@ -55,11 +55,11 @@ Aucune phase suivante ne démarre avant validation du socle précédent.
 - Migration `course_extraction.sql` appliquée à Supabase après validation sur PostgreSQL 18 local : sauvegarde atomique, RLS propriétaire, relance sans doublons et suppression en cascade.
 - Parcours réel testé dans le navigateur avec un compte dédié, sur desktop/mobile : succès multipage, PDF invalide, image non prise en charge, rechargement, reprise, association à un projet et suppression.
 - Organisation du nouveau code par fonctionnalité : `app/extraction/`, `app/upload/`, `frontend/src/features/extraction/` et `frontend/src/features/upload/`.
+- Incrément multi-format livré : extraction automatique PDF/DOCX/PPTX/EPUB, provenance typée page/section/diapositive/chapitre, migration sans perte des pages PDF et MIME Storage mis à jour. Migration `course_document_locations.sql` appliquée à Supabase et testée localement.
 - La feature 3.1.3 reste en cours : OCR des scans et rapports complets de qualité/durée restent à livrer. Le chat, les synthèses et les embeddings ne sont pas branchés par cet incrément.
 
 ## Proposition de lots multi-format
 1. Finir 3.1.3 : OCR des photos/scans et pages PDF sans texte, orientation/langues, qualité et erreurs par page ; limiter les ressources et préparer le traitement asynchrone.
-2. Word : DOCX natif (paragraphes, titres, tableaux, provenance par section), puis conversion isolée des anciens DOC. Ne pas inventer de numéros de page pour un document reformatable.
-3. EPUB : extraction par chapitre/section avec liens de provenance ; validation ZIP, limites de décompression, fichiers protégés explicitement refusés. Étendre l'upload et les MIME autorisés à cette étape.
-4. Données structurées : tableaux et éléments métier avec schéma, provenance et tests propres ; ne pas assimiler extraction de texte et compréhension d'image.
-5. Indexation : embeddings persistés et retrieval vectoriel sur le contrat documentaire commun.
+2. Conversion isolée des anciens DOC/PPT binaires ; aucun convertisseur Office système n'est actuellement installé. Ne pas inventer de numéros de page pour un document reformatable.
+3. Données structurées : tableaux et éléments métier avec schéma, provenance et tests propres ; ne pas assimiler extraction de texte et compréhension d'image.
+4. Indexation : embeddings persistés et retrieval vectoriel sur le contrat documentaire commun.

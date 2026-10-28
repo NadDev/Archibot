@@ -16,9 +16,9 @@ insert into public.project_course_links (project_id, course_id)
 values (current_setting('test.project')::uuid, current_setting('test.course')::uuid);
 
 select public.save_course_extraction(current_setting('test.course')::uuid, 'extracted', null,
-  '[{"text":"first page","page_number":1,"chunk_index":1},{"text":"second page","page_number":2,"chunk_index":1}]');
+  '[{"text":"first page","page_number":1,"chunk_index":1,"locator_type":"page","locator":"Page 1","source_order":1,"document_format":"pdf"},{"text":"second page","page_number":2,"chunk_index":1,"locator_type":"page","locator":"Page 2","source_order":2,"document_format":"pdf"}]');
 select public.save_course_extraction(current_setting('test.course')::uuid, 'extracted', null,
-  '[{"text":"first page","page_number":1,"chunk_index":1},{"text":"second page","page_number":2,"chunk_index":1}]');
+  '[{"text":"first page","page_number":1,"chunk_index":1,"locator_type":"page","locator":"Page 1","source_order":1,"document_format":"pdf"},{"text":"second page","page_number":2,"chunk_index":1,"locator_type":"page","locator":"Page 2","source_order":2,"document_format":"pdf"}]');
 do $$
 begin
   if (select count(*) from public.project_course_chunks(current_setting('test.project')::uuid)) <> 2 then
@@ -32,7 +32,7 @@ begin
   end if;
   begin
     perform public.save_course_extraction(current_setting('test.course')::uuid, 'extracted', null,
-      '[{"text":"invalid page","page_number":0,"chunk_index":1}]');
+      '[{"text":"invalid page","page_number":0,"chunk_index":1,"locator_type":"page","locator":"Page 0","source_order":0,"document_format":"pdf"}]');
     raise exception 'Invalid provenance accepted';
   exception when check_violation then null;
   end;
@@ -57,14 +57,21 @@ begin
   exception when insufficient_privilege then null;
   end;
   begin
-    insert into public.course_chunks (course_id, owner_id, text, page_number, chunk_index)
-    values (current_setting('test.course')::uuid, current_setting('test.owner')::uuid, 'forbidden', 3, 1);
+    insert into public.course_chunks (
+      course_id, owner_id, text, page_number, chunk_index, locator_type, locator, source_order, document_format
+    ) values (
+      current_setting('test.course')::uuid, current_setting('test.owner')::uuid,
+      'forbidden', 3, 1, 'page', 'Page 3', 3, 'pdf'
+    );
     raise exception 'Cross-user insert allowed';
   exception when insufficient_privilege then null;
   end;
   begin
-    insert into public.course_chunks (course_id, text, page_number, chunk_index)
-    values (current_setting('test.course')::uuid, 'forbidden', 3, 1);
+    insert into public.course_chunks (
+      course_id, text, page_number, chunk_index, locator_type, locator, source_order, document_format
+    ) values (
+      current_setting('test.course')::uuid, 'forbidden', 3, 1, 'page', 'Page 3', 3, 'pdf'
+    );
     raise exception 'Foreign course association allowed';
   exception when foreign_key_violation then null;
   end;
@@ -101,7 +108,7 @@ begin
 end;
 $$;
 select public.save_course_extraction(current_setting('test.course')::uuid, 'extracted', null,
-  '[{"text":"first page","page_number":1,"chunk_index":1}]');
+  '[{"text":"first page","page_number":1,"chunk_index":1,"locator_type":"page","locator":"Page 1","source_order":1,"document_format":"pdf"}]');
 delete from public.user_courses where id = current_setting('test.course')::uuid;
 do $$
 begin

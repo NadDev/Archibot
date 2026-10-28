@@ -45,3 +45,15 @@ def test_course_extraction_uses_owner_rls_and_atomic_replacement() -> None:
     assert "owner_id = auth.uid() for update" in sql
     assert "delete from public.course_chunks" in sql
     assert "join public.project_course_links" in sql
+
+
+def test_course_document_locations_preserve_pages_and_support_structural_formats() -> None:
+    sql = (Path(__file__).parents[1] / "sql" / "course_document_locations.sql").read_text(encoding="utf-8")
+    assert "set locator_type = 'page'" in sql
+    assert "alter column page_number drop not null" in sql
+    assert "check (locator_type in ('page', 'slide', 'section', 'chapter'))" in sql
+    assert "unique (course_id, locator_type, locator, chunk_index)" in sql
+    assert "chunk.document_format" in sql
+    assert "security invoker set search_path = ''" in sql
+    assert "application/vnd.openxmlformats-officedocument.presentationml.presentation" in sql
+    assert "application/epub+zip" in sql

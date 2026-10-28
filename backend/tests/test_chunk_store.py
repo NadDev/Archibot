@@ -196,6 +196,10 @@ def test_supabase_store_reads_all_linked_course_chunks(monkeypatch: pytest.Monke
             "course_id": "course-source",
             "page_number": page,
             "chunk_index": 1,
+            "locator_type": "page",
+            "locator": f"Page {page}",
+            "source_order": page,
+                "document_format": "pdf",
             "ingested_at": "2026-10-28T00:00:00+00:00",
         }
         for page in range(1, 502)
@@ -210,4 +214,35 @@ def test_supabase_store_reads_all_linked_course_chunks(monkeypatch: pytest.Monke
     assert chunks[-1][1].source_id == "course-source"
     assert chunks[-1][1].project_id == project_id
     assert chunks[-1][1].visibility == ChunkVisibility.PRIVATE
+    assert chunks[-1][1].locator_type == "page"
+    assert chunks[-1][1].locator == "Page 501"
+    assert chunks[-1][1].source_order == 501
     assert fake_client.rpc_calls == [("project_course_chunks", {"target_project_id": project_id})] * 2
+
+
+def test_supabase_store_reads_structural_course_locations(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_client = FakeSupabaseClient()
+    project_id = "00000000-0000-0000-0000-000000000001"
+    fake_client.queries["project_course_chunks"].rows = [{
+        "text": "ventilation de la diapositive",
+        "course_id": "course-source",
+        "page_number": None,
+        "chunk_index": 1,
+        "locator_type": "slide",
+        "locator": "Diapositive 2",
+        "source_order": 2,
+        "document_format": "pptx",
+        "ingested_at": "2026-10-28T00:00:00+00:00",
+    }]
+    monkeypatch.setattr(chunk_store_module, "create_client", lambda url, key: fake_client)
+    settings = Settings("https://example.supabase.co", "test-key", "chunks", "test-model")
+
+    chunks = SupabaseChunkStore(settings, "user-jwt").list_chunks(project_id, "user-a")
+
+    assert len(chunks) == 1
+    metadata = chunks[0][1]
+    assert metadata.page_number is None
+    assert metadata.locator_type == "slide"
+    assert metadata.locator == "Diapositive 2"
+    assert metadata.source_order == 2
+    assert metadata.doc_version == "pptx-v1"

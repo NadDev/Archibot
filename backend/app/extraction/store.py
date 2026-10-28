@@ -19,7 +19,7 @@ def project_course_chunks(client: Client, project_id: str) -> list[tuple[str, Ch
     while True:
         response = (
             client.rpc("project_course_chunks", {"target_project_id": project_uuid})
-            .order("course_id").order("page_number").order("chunk_index")
+            .order("course_id").order("source_order").order("chunk_index")
             .range(offset, offset + batch_size - 1)
             .execute()
         )
@@ -29,9 +29,12 @@ def project_course_chunks(client: Client, project_id: str) -> list[tuple[str, Ch
                 source_type=SourceType.COURSE,
                 source_id=row["course_id"],
                 project_id=project_id,
-                doc_version="pdf-v1",
+                doc_version=f"{row['document_format']}-v1",
                 page_number=row["page_number"],
                 chunk_index=row["chunk_index"],
+                locator_type=row["locator_type"],
+                locator=row["locator"],
+                source_order=row["source_order"],
                 ingested_at=row["ingested_at"],
             ))
             for row in rows

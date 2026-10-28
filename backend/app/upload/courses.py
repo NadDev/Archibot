@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Any, Protocol
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,11 +9,23 @@ from supabase import Client, ClientOptions, create_client
 
 from ..auth import AuthenticatedUser, get_current_user
 from ..config import get_settings
-from ..extraction import DocumentProcessingError, extract_pdf_chunks
+from ..extraction import (
+    DocumentProcessingError,
+    extract_docx_chunks,
+    extract_epub_chunks,
+    extract_pdf_chunks,
+    extract_pptx_chunks,
+)
 
 
 MAX_DOCUMENT_BYTES = 50 * 1024 * 1024
 router = APIRouter(prefix="/v1/courses", tags=["courses"])
+EXTRACTORS = {
+    "application/pdf": ("pdf", extract_pdf_chunks),
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ("docx", extract_docx_chunks),
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": ("pptx", extract_pptx_chunks),
+    "application/epub+zip": ("epub", extract_epub_chunks),
+}
 
 
 class ExtractionResult(BaseModel):
@@ -22,8 +35,17 @@ class ExtractionResult(BaseModel):
     error: str | None = None
 
 
+class CourseExtractionClient(Protocol):
+    @property
+    def storage(self) -> Any: ...
+
+    def table(self, table_name: str) -> Any: ...
+
+    def rpc(self, fn: str, params: dict[str, Any] | None = None) -> Any: ...
+
+
 class CourseExtractionService:
-    def __init__(self, client: Client, owner_id: str) -> None:
+    def __init__(self, client: CourseExtractionClient, owner_id: str) -> None:
         self.client = client
         self.owner_id = owner_id
 
@@ -45,17 +67,20 @@ class CourseExtractionService:
         status = "extracted"
         error = None
         chunks = []
-        if course["content_type"] != "application/pdf":
+        extraction_format = EXTRACTORS.get(course["content_type"])
+        if extraction_format is None:
             status = "unsupported"
             error = "Extraction non disponible pour ce format."
+            document_format = "unsupported"
         else:
+            document_format, extractor = extraction_format
             try:
                 if not 0 < course["file_size"] <= MAX_DOCUMENT_BYTES:
                     raise DocumentProcessingError("Le document doit faire entre 1 octet et 50 Mo.")
-                pdf_bytes = self.client.storage.from_("user-courses").download(path)
-                if len(pdf_bytes) > MAX_DOCUMENT_BYTES:
+                document_bytes = self.client.storage.from_("user-courses").download(path)
+                if len(document_bytes) > MAX_DOCUMENT_BYTES:
                     raise DocumentProcessingError("Le document depasse 50 Mo.")
-                chunks = extract_pdf_chunks(pdf_bytes)
+                chunks = extractor(document_bytes)
             except DocumentProcessingError as exc:
                 status = "failed"
                 error = str(exc)
@@ -68,6 +93,12 @@ class CourseExtractionService:
             "result_error": error,
             "result_chunks": [
                 {"text": chunk.text, "page_number": chunk.page_number, "chunk_index": chunk.chunk_index}
+                | {
+                    "locator_type": chunk.locator_type,
+                    "locator": chunk.locator,
+                    "source_order": chunk.source_order,
+                    "document_format": document_format,
+                }
                 for chunk in chunks
             ],
         }).execute()

@@ -1,16 +1,25 @@
 from __future__ import annotations
 
+from io import BytesIO
 from types import SimpleNamespace
 from uuid import UUID
+from zipfile import ZIP_STORED, ZipFile
 
 import pytest
 import httpx
+from typing import Any
+from docx import Document
 from fastapi import HTTPException
+from pptx import Presentation
+from pptx.util import Inches
 
 from app.extraction import (
     DocumentProcessingError,
     chunk_text,
+    extract_docx_chunks,
+    extract_epub_chunks,
     extract_pdf_chunks,
+    extract_pptx_chunks,
 )
 from app.auth import AuthenticatedUser
 from app.config import Settings
@@ -56,6 +65,50 @@ def _pdf_with_text(*page_texts: str) -> bytes:
     return bytes(pdf)
 
 
+def _docx_with_content() -> bytes:
+        document = Document()
+        document.add_heading("Contexte", level=1)
+        document.add_paragraph("La lumière naturelle organise les espaces.")
+        table = document.add_table(rows=1, cols=2)
+        table.cell(0, 0).text = "Orientation"
+        table.cell(0, 1).text = "Sud"
+        output = BytesIO()
+        document.save(output)
+        return output.getvalue()
+
+
+def _pptx_with_content() -> bytes:
+        presentation = Presentation()
+        slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+        textbox = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(6), Inches(1))
+        textbox.text = "Diapositive sur la ventilation"
+        table = slide.shapes.add_table(1, 2, Inches(1), Inches(2), Inches(5), Inches(1)).table
+        table.cell(0, 0).text = "Débit"
+        table.cell(0, 1).text = "Contrôlé"
+        output = BytesIO()
+        presentation.save(output)
+        return output.getvalue()
+
+
+def _epub_with_chapters() -> bytes:
+        output = BytesIO()
+        with ZipFile(output, "w") as archive:
+                archive.writestr("mimetype", "application/epub+zip", compress_type=ZIP_STORED)
+                archive.writestr("META-INF/container.xml", """<?xml version="1.0"?>
+<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
+    <rootfiles><rootfile full-path="OEBPS/book.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>""")
+                archive.writestr("OEBPS/book.opf", """<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid">
+    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="bookid">test-book</dc:identifier><dc:title>Test</dc:title><dc:language>fr</dc:language></metadata>
+    <manifest><item id="one" href="one.xhtml" media-type="application/xhtml+xml"/><item id="two" href="two.xhtml" media-type="application/xhtml+xml"/></manifest>
+    <spine><itemref idref="one"/><itemref idref="two"/></spine>
+</package>""")
+                archive.writestr("OEBPS/one.xhtml", "<html><body><h1>Chapitre un</h1><p>Premier chapitre sur le site.</p></body></html>")
+                archive.writestr("OEBPS/two.xhtml", "<html><body><h1>Chapitre deux</h1><p>Deuxième chapitre sur la structure.</p></body></html>")
+        return output.getvalue()
+
+
 def test_extract_pdf_text_preserves_page_and_chunk_references() -> None:
     chunks = extract_pdf_chunks(
         _pdf_with_text("Architecture course reference supports spatial design choices"),
@@ -65,6 +118,8 @@ def test_extract_pdf_text_preserves_page_and_chunk_references() -> None:
 
     assert len(chunks) > 1
     assert all(chunk.page_number == 1 for chunk in chunks)
+    assert all(chunk.locator_type == "page" and chunk.locator == "Page 1" for chunk in chunks)
+    assert all(chunk.source_order == 1 for chunk in chunks)
     assert [chunk.chunk_index for chunk in chunks] == list(range(1, len(chunks) + 1))
     assert all(chunk.text for chunk in chunks)
     assert all(len(chunk.text) <= 24 for chunk in chunks)
@@ -78,7 +133,50 @@ def test_extract_pdf_chunks_keep_their_source_page() -> None:
     )
 
     assert [(chunk.page_number, chunk.chunk_index) for chunk in chunks] == [(1, 1), (2, 1)]
+    assert [(chunk.locator, chunk.source_order) for chunk in chunks] == [("Page 1", 1), ("Page 2", 2)]
     assert [chunk.text for chunk in chunks] == ["first page content", "second page content"]
+
+
+def test_extract_docx_keeps_sections_and_tables_without_fake_pages() -> None:
+    chunks = extract_docx_chunks(_docx_with_content())
+
+    assert len(chunks) == 1
+    assert chunks[0].page_number is None
+    assert chunks[0].locator_type == "section"
+    assert chunks[0].locator == "Section 1: Contexte"
+    assert "La lumière naturelle" in chunks[0].text
+    assert "Orientation | Sud" in chunks[0].text
+
+
+def test_extract_pptx_keeps_slide_and_table_provenance() -> None:
+    chunks = extract_pptx_chunks(_pptx_with_content())
+
+    assert len(chunks) == 1
+    assert chunks[0].page_number is None
+    assert chunks[0].locator_type == "slide"
+    assert chunks[0].locator == "Diapositive 1"
+    assert "ventilation" in chunks[0].text
+    assert "Débit | Contrôlé" in chunks[0].text
+
+
+def test_extract_epub_follows_spine_order_and_chapter_names() -> None:
+    chunks = extract_epub_chunks(_epub_with_chapters())
+
+    assert [(chunk.source_order, chunk.locator_type) for chunk in chunks] == [(1, "chapter"), (2, "chapter")]
+    assert [chunk.locator for chunk in chunks] == [
+        "Chapitre 1: Chapitre un (one.xhtml)",
+        "Chapitre 2: Chapitre deux (two.xhtml)",
+    ]
+    assert [chunk.text for chunk in chunks] == [
+        "Chapitre un Premier chapitre sur le site.",
+        "Chapitre deux Deuxième chapitre sur la structure.",
+    ]
+
+
+@pytest.mark.parametrize("extractor", [extract_docx_chunks, extract_pptx_chunks, extract_epub_chunks])
+def test_office_and_epub_parsers_reject_invalid_archives(extractor) -> None:
+    with pytest.raises(DocumentProcessingError, match="invalid|incomplete"):
+        extractor(b"not a ZIP package")
 
 
 def test_chunk_text_returns_empty_for_whitespace() -> None:
@@ -117,12 +215,12 @@ class FakeCourseClient:
             "file_size": len(content),
         }]
         self.filters = []
-        self.saved = None
+        self.saved: dict[str, Any] = {}
         self.downloads = []
         self.storage = self
 
-    def table(self, name):
-        assert name == "user_courses"
+    def table(self, table_name):
+        assert table_name == "user_courses"
         return self
 
     def select(self, columns):
@@ -143,8 +241,9 @@ class FakeCourseClient:
         self.downloads.append(path)
         return self.content
 
-    def rpc(self, name, params):
-        assert name == "save_course_extraction"
+    def rpc(self, fn, params=None):
+        assert fn == "save_course_extraction"
+        assert params is not None
         self.saved = params
         return self
 
@@ -159,9 +258,39 @@ def test_course_extraction_persists_pages_and_uses_owner_filter() -> None:
     assert result.chunk_count == 2
     assert client.filters == [("id", str(course_id)), ("owner_id", "user-a")]
     assert client.saved["result_chunks"] == [
-        {"text": "first page", "page_number": 1, "chunk_index": 1},
-        {"text": "second page", "page_number": 2, "chunk_index": 1},
+        {"text": "first page", "page_number": 1, "chunk_index": 1,
+         "locator_type": "page", "locator": "Page 1", "source_order": 1, "document_format": "pdf"},
+        {"text": "second page", "page_number": 2, "chunk_index": 1,
+         "locator_type": "page", "locator": "Page 2", "source_order": 2, "document_format": "pdf"},
     ]
+
+
+@pytest.mark.parametrize(
+    ("content_type", "content", "document_format", "locator_type"),
+    [
+        ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", _docx_with_content(), "docx", "section"),
+        ("application/vnd.openxmlformats-officedocument.presentationml.presentation", _pptx_with_content(), "pptx", "slide"),
+        ("application/epub+zip", _epub_with_chapters(), "epub", "chapter"),
+    ],
+    ids=["docx", "pptx", "epub"],
+)
+def test_course_extraction_dispatches_modern_formats_and_persists_locators(
+    content_type: str,
+    content: bytes,
+    document_format: str,
+    locator_type: str,
+) -> None:
+    client = FakeCourseClient(content, content_type)
+
+    result = CourseExtractionService(client, "user-a").extract(UUID(client.rows[0]["id"]))
+
+    assert result.status == "extracted"
+    assert result.chunk_count > 0
+    assert client.saved["result_chunks"]
+    assert all(chunk["document_format"] == document_format for chunk in client.saved["result_chunks"])
+    assert all(chunk["locator_type"] == locator_type for chunk in client.saved["result_chunks"])
+    assert all(chunk["page_number"] is None for chunk in client.saved["result_chunks"])
+    assert client.downloads == [client.rows[0]["storage_path"]]
 
 
 @pytest.mark.parametrize("content", [b"invalid pdf", _pdf_with_text("")])
@@ -187,7 +316,7 @@ def test_course_extraction_rejects_foreign_storage_path() -> None:
     with pytest.raises(HTTPException) as raised:
         CourseExtractionService(client, "user-a").extract(UUID(client.rows[0]["id"]))
     assert raised.value.status_code == 403
-    assert client.saved is None
+    assert client.saved == {}
     assert client.downloads == []
 
 
@@ -197,7 +326,7 @@ def test_course_extraction_does_not_download_invisible_course() -> None:
     with pytest.raises(HTTPException) as raised:
         CourseExtractionService(client, "user-b").extract(UUID(int=1))
     assert raised.value.status_code == 404
-    assert client.saved is None
+    assert client.saved == {}
     assert client.downloads == []
 
 

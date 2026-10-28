@@ -61,12 +61,12 @@
 - Feature 3.3.2: Métadonnées minimales
 - Feature 3.3.3: Embeddings + indexation
 
-### Proposition Epic 3.4 - Formats documentaires complémentaires
-- Feature 3.4.1: DOCX natif avec titres, paragraphes, tableaux et provenance par section ; conversion DOC historique isolée en sous-incrément.
-- Feature 3.4.2: EPUB avec provenance chapitre/section, validation des archives et extension des formats d'upload.
+### Epic 3.4 - Formats documentaires complémentaires
+- Feature 3.4.1: DOCX et PPTX natifs avec titres, paragraphes, tableaux, formes groupées et provenance section/diapositive. Livrée ; pas de pagination fictive.
+- Feature 3.4.2: EPUB avec provenance chapitre, ordre de lecture, validation des archives et extension des formats d'upload. Livrée.
 - Feature 3.4.3: Extraction de données structurées avec schéma et provenance, distincte du texte brut et de l'OCR.
 - Dépendance : contrat d'extraction commun, statut et erreurs par document. Les images/photos et scans restent dans 3.1.2/3.1.3 pour leur ingestion/OCR.
-- Statut : proposition de découpage ; aucune prise en charge Word/EPUB/OCR n'est annoncée comme livrée.
+- À planifier : conversion des anciens formats binaires DOC/PPT et prise en charge OCR des images/scans, hors de l'incrément livré.
 
 ## Lot/Batch 4 - Assistant RAG métier architecture
 ### Epic 4.1 - Retrieval et génération contextualisée
@@ -198,4 +198,5 @@ Les lots existants sont le decoupage produit. La sequence ci-dessous les rend ex
 - Gate PDF texte validee : parcours navigateur reel du compte de test jusqu'au retrieval avec pages ; tests SQL natifs PostgreSQL 18 pour isolation, rollback et suppression. Correctif Auth : lecture de `UserResponse.user` verifiee avec le modele du SDK.
 - UX : pas d'action d'extraction technique apres succes ; « Reessayer » uniquement en attente ou apres echec.
 - Organisation : nouveaux modules backend/frontend regroupes dans des dossiers de fonctionnalite (`extraction`, `upload`).
-- Reste pour 3.1.3 : OCR photos/scans, rapports complets de qualite/duree et limites de traitement ; ensuite formats complementaires proposes en 3.4, puis embeddings/retrieval vectoriel. Ne pas marquer la carte 3.1.3 terminee.
+- Livré en complément : DOCX, PPTX et EPUB avec provenance typée et migration appliquée ; tests backend couvrent extraction, tableaux, ordre de lecture, retrieval et sécurité des archives.
+- Reste : OCR photos/scans et PDF sans texte, rapports complets de qualité/durée, conversion des anciens DOC/PPT, puis embeddings/retrieval vectoriel. Ne pas marquer la carte 3.1.3 terminée.

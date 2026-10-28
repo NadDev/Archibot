@@ -35,10 +35,18 @@ export const extractionLabels: Record<ExtractionStatus, string> = {
   failed: "Extraction en échec",
   unsupported: "Format non pris en charge",
 };
+export const extractableContentTypes = new Set([
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/epub+zip",
+]);
 const courseMimeTypes: Record<string, string> = {
   pdf: "application/pdf",
   doc: "application/msword",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  epub: "application/epub+zip",
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",

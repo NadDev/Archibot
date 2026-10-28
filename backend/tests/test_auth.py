@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
@@ -27,7 +28,7 @@ def test_current_user_validates_token_with_supabase(monkeypatch: pytest.MonkeyPa
             calls.append(("get_user", jwt, ""))
             return UserResponse(user=User(
                 id="user-123", aud="authenticated", app_metadata={}, user_metadata={},
-                created_at="2026-10-28T00:00:00Z",
+                created_at=datetime.fromisoformat("2026-10-28T00:00:00+00:00"),
             ))
 
     class FakeClient:
