@@ -49,7 +49,11 @@ Dans Supabase Auth, l'email est actif et la confirmation email est actuellement 
 - project_id (text)
 - doc_version (text)
 - locality (text, nullable)
+- page_number (integer, nullable)
+- chunk_index (integer, nullable)
 - ingested_at (timestamptz)
+
+Pour une base existante, appliquer `sql/chunk_page_provenance.sql` après `sql/chunks.sql`. Les deux champs sont facultatifs pour les chunks qui ne proviennent pas d'un PDF paginé.
 
 Exemple SQL:
 
@@ -62,6 +66,8 @@ create table if not exists chunks (
    project_id text not null,
    doc_version text not null,
    locality text,
+   page_number integer check (page_number is null or page_number >= 1),
+   chunk_index integer check (chunk_index is null or chunk_index >= 1),
    ingested_at timestamptz not null default now()
 );
 

@@ -209,6 +209,8 @@ def test_ingestion_then_retrieval_flow() -> None:
                     "source_id": "plu-marseille-hauteur",
                     "project_id": "demo-project",
                     "doc_version": "v1",
+                    "page_number": 4,
+                    "chunk_index": 1,
                     "locality": "marseille",
                     "ingested_at": "2026-09-28T00:00:00Z",
                 },
@@ -231,3 +233,8 @@ def test_ingestion_then_retrieval_flow() -> None:
     body = retrieval_response.json()
     assert body["total"] >= 1
     assert any(item["metadata"]["locality"] == "marseille" for item in body["items"])
+    cited_chunk = next(
+        item for item in body["items"] if item["metadata"]["source_id"] == "plu-marseille-hauteur"
+    )
+    assert cited_chunk["metadata"]["page_number"] == 4
+    assert cited_chunk["metadata"]["chunk_index"] == 1

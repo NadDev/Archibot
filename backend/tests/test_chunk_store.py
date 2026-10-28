@@ -14,6 +14,8 @@ from app.schemas import ChunkMetadata, ChunkVisibility, SourceType
 def make_metadata(
     project_id: str,
     visibility: ChunkVisibility = ChunkVisibility.PRIVATE,
+    page_number: int | None = None,
+    chunk_index: int | None = None,
 ) -> ChunkMetadata:
     return ChunkMetadata(
         source_type=SourceType.COURSE,
@@ -22,6 +24,8 @@ def make_metadata(
         doc_version="v1",
         ingested_at=datetime(2026, 10, 21, tzinfo=UTC),
         visibility=visibility,
+        page_number=page_number,
+        chunk_index=chunk_index,
     )
 
 
@@ -114,3 +118,55 @@ def test_supabase_store_uses_user_jwt_and_owner_scoped_queries(
         ("project_id", "project-a"),
         ("owner_id", "user-a"),
     ]
+
+
+def test_supabase_store_persists_page_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_client = FakeSupabaseClient()
+    monkeypatch.setattr(chunk_store_module, "create_client", lambda url, key: fake_client)
+    settings = Settings(
+        supabase_url="https://example.supabase.co",
+        supabase_publishable_key="test-publishable-key",
+        chunks_table="chunks",
+        embedding_model="test-model",
+    )
+    store = SupabaseChunkStore(settings, access_token="user-jwt")
+
+    store.add_chunks(
+        [("page excerpt", make_metadata("project-a", page_number=3, chunk_index=2))],
+        owner_id="user-a",
+    )
+
+    inserted = fake_client.queries["chunks"].inserted
+    assert inserted is not None
+    assert inserted[0]["page_number"] == 3
+    assert inserted[0]["chunk_index"] == 2
+
+
+def test_supabase_store_reads_page_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_client = FakeSupabaseClient()
+    fake_client.queries["chunks"].rows = [
+        {
+            "text": "page excerpt",
+            "source_type": "course",
+            "source_id": "course-source",
+            "project_id": "project-a",
+            "doc_version": "v1",
+            "locality": None,
+            "page_number": 3,
+            "chunk_index": 2,
+            "ingested_at": "2026-10-21T00:00:00+00:00",
+        }
+    ]
+    monkeypatch.setattr(chunk_store_module, "create_client", lambda url, key: fake_client)
+    settings = Settings(
+        supabase_url="https://example.supabase.co",
+        supabase_publishable_key="test-publishable-key",
+        chunks_table="chunks",
+        embedding_model="test-model",
+    )
+    store = SupabaseChunkStore(settings, access_token="user-jwt")
+
+    chunks = store.list_chunks(project_id="project-a", owner_id="user-a")
+
+    assert chunks[0][1].page_number == 3
+    assert chunks[0][1].chunk_index == 2

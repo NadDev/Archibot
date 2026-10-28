@@ -183,9 +183,9 @@ Les lots existants sont le decoupage produit. La sequence ci-dessous les rend ex
 - Cette bibliotheque de traitement est testee avant son exposition par API ; upload public et persistance attendent l'authentification, le stockage et le contrat de document du Lot 2.
 - Criteres : PDF texte valide -> chunks non vides rattaches a une page ; PDF invalide, vide ou sans texte -> erreur explicite ; taille et recouvrement des chunks valides.
 
-### Prochaine etape technique a reprendre
- - Modele valide : projets, cours et documents prives a un seul proprietaire, sans partage entre comptes. Le corpus d'architecture generale est une table separee, en lecture pour les comptes authentifies et alimentee par l'administration.
- - Implemente localement : bearer Supabase Auth requis pour retrieval/ingestion/assistant ; le JWT utilisateur est transmis a PostgREST ; `chunks.owner_id` est force cote API et RLS le limite a `auth.uid()` ; l'API ne peut pas ecrire dans le corpus commun.
- - Migration SQL fail-closed : les anciennes lignes sans `owner_id` restent invisibles. Il faut verifier/attribuer explicitement leurs proprietaires avant toute remise en service de donnees existantes.
- - Reste a faire : appliquer la migration au projet Supabase, verifier la configuration des roles/grants, et executer des tests d'integration avec deux comptes Auth reels pour confirmer l'isolation et la lecture du corpus commun.
- - Gate avant le prochain jalon : tests RLS distants verts. Ensuite seulement, poursuivre l'upload persistant, l'indexation pgvector et le retrieval top-k avec embeddings.
+### Etat et prochaine etape technique (2026-10-28)
+- Valide : authentification, stockage de projets/cours prives et RLS ; l'utilisateur a confirme l'isolation entre deux comptes reels.
+- Valide : l'API protege retrieval/ingestion/assistant par bearer JWT et interdit l'ecriture du corpus commun.
+- Implemente : extraction PDF par page et chunking ; `page_number`/`chunk_index` sont transportes par le schema, persistes et restitues au retrieval. Migration appliquee au projet Supabase.
+- Reste a faire pour le Lot 3 : brancher les fichiers uploades a l'extraction et a la persistance des chunks, verifier le proprietaire, et exposer l'etat d'indexation ; OCR des scans ensuite.
+- Gate : parcours bout-en-bout avec citation de page et isolation entre comptes avant de passer aux embeddings et au retrieval vectoriel.

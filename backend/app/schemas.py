@@ -24,6 +24,8 @@ class ChunkMetadata(BaseModel):
     project_id: str = Field(min_length=1)
     doc_version: str = Field(min_length=1)
     locality: Optional[str] = None
+    page_number: Optional[int] = Field(default=None, ge=1)
+    chunk_index: Optional[int] = Field(default=None, ge=1)
     ingested_at: datetime
     visibility: ChunkVisibility = ChunkVisibility.PRIVATE
 

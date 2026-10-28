@@ -7,6 +7,8 @@ create table if not exists public.chunks (
   project_id text not null,
   doc_version text not null,
   locality text,
+  page_number integer check (page_number is null or page_number >= 1),
+  chunk_index integer check (chunk_index is null or chunk_index >= 1),
   ingested_at timestamptz not null default now()
 );
 
@@ -33,6 +35,8 @@ create table if not exists public.architecture_knowledge_chunks (
   source_id text not null,
   doc_version text not null,
   locality text,
+  page_number integer check (page_number is null or page_number >= 1),
+  chunk_index integer check (chunk_index is null or chunk_index >= 1),
   ingested_at timestamptz not null default now()
 );
 

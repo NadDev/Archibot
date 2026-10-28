@@ -9,15 +9,25 @@ from app.document_processing import (
 )
 
 
-def _pdf_with_text(text: str) -> bytes:
-    content = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode("ascii")
+def _pdf_with_text(*page_texts: str) -> bytes:
+    page_numbers = range(3, 3 + len(page_texts))
+    font_number = 3 + len(page_texts)
+    first_content_number = font_number + 1
+    page_references = " ".join(f"{number} 0 R" for number in page_numbers)
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
-        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-        f"<< /Length {len(content)} >>\nstream\n".encode("ascii") + content + b"\nendstream",
+        f"<< /Type /Pages /Kids [{page_references}] /Count {len(page_texts)} >>".encode("ascii"),
     ]
+    for index in range(len(page_texts)):
+        page_number = 3 + index
+        content_number = first_content_number + index
+        objects.append(
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 {font_number} 0 R >> >> /Contents {content_number} 0 R >>".encode("ascii")
+        )
+    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    for text in page_texts:
+        content = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode("ascii")
+        objects.append(f"<< /Length {len(content)} >>\nstream\n".encode("ascii") + content + b"\nendstream")
 
     pdf = bytearray(b"%PDF-1.4\n")
     offsets: list[int] = []
@@ -49,6 +59,17 @@ def test_extract_pdf_text_preserves_page_and_chunk_references() -> None:
     assert [chunk.chunk_index for chunk in chunks] == list(range(1, len(chunks) + 1))
     assert all(chunk.text for chunk in chunks)
     assert all(len(chunk.text) <= 24 for chunk in chunks)
+
+
+def test_extract_pdf_chunks_keep_their_source_page() -> None:
+    chunks = extract_pdf_chunks(
+        _pdf_with_text("first page content", "second page content"),
+        max_chars=64,
+        overlap_chars=0,
+    )
+
+    assert [(chunk.page_number, chunk.chunk_index) for chunk in chunks] == [(1, 1), (2, 1)]
+    assert [chunk.text for chunk in chunks] == ["first page content", "second page content"]
 
 
 def test_chunk_text_returns_empty_for_whitespace() -> None:

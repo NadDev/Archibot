@@ -79,14 +79,14 @@ class SupabaseChunkStore(ChunkStore):
     ) -> List[tuple[str, ChunkMetadata]]:
         private_response = (
             self._client.table(self._table)
-            .select("text,source_type,source_id,project_id,doc_version,locality,ingested_at")
+            .select("text,source_type,source_id,project_id,doc_version,locality,page_number,chunk_index,ingested_at")
             .eq("project_id", project_id)
             .eq("owner_id", owner_id)
             .execute()
         )
         shared_response = (
             self._client.table("architecture_knowledge_chunks")
-            .select("text,source_id,doc_version,locality,ingested_at")
+            .select("text,source_id,doc_version,locality,page_number,chunk_index,ingested_at")
             .execute()
         )
 
@@ -130,6 +130,8 @@ class SupabaseChunkStore(ChunkStore):
             project_id=project_id,
             doc_version=str(row["doc_version"]),
             locality=str(row["locality"]) if row.get("locality") is not None else None,
+            page_number=int(row["page_number"]) if row.get("page_number") is not None else None,
+            chunk_index=int(row["chunk_index"]) if row.get("chunk_index") is not None else None,
             ingested_at=ingested_at,
             visibility=visibility,
         )
@@ -148,6 +150,8 @@ class SupabaseChunkStore(ChunkStore):
                     "project_id": metadata.project_id,
                     "doc_version": metadata.doc_version,
                     "locality": metadata.locality,
+                    "page_number": metadata.page_number,
+                    "chunk_index": metadata.chunk_index,
                     "ingested_at": metadata.ingested_at.isoformat(),
                 }
             )
