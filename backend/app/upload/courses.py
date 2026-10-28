@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import partial
+from time import perf_counter
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -42,6 +43,7 @@ class ExtractionResult(BaseModel):
     status: str
     chunk_count: int
     error: str | None = None
+    report: dict[str, Any]
 
 
 class CourseExtractionClient(Protocol):
@@ -59,6 +61,7 @@ class CourseExtractionService:
         self.owner_id = owner_id
 
     def extract(self, course_id: UUID) -> ExtractionResult:
+        started_at = perf_counter()
         response = (
             self.client.table("user_courses")
             .select("id,storage_path,content_type,file_size")
@@ -76,6 +79,16 @@ class CourseExtractionService:
         status = "extracted"
         error = None
         chunks = []
+        report: dict[str, Any] = {
+            "schema_version": 1,
+            "duration_ms": 0,
+            "source_count": 0,
+            "ocr_page_count": 0,
+            "average_ocr_confidence": None,
+            "pages": [],
+            "error": None,
+        }
+        document_format = "unsupported"
         extraction_format = EXTRACTORS.get(course["content_type"])
         if extraction_format is None:
             status = "unsupported"
@@ -89,17 +102,32 @@ class CourseExtractionService:
                 document_bytes = self.client.storage.from_("user-courses").download(path)
                 if len(document_bytes) > MAX_DOCUMENT_BYTES:
                     raise DocumentProcessingError("Le document depasse 50 Mo.")
-                chunks = extractor(document_bytes)
+                if document_format in {"pdf", "png", "jpeg", "webp"}:
+                    chunks = extractor(document_bytes, report=report)
+                else:
+                    chunks = extractor(document_bytes)
+                if report["source_count"] == 0:
+                    report["source_count"] = len({
+                        (chunk.locator_type, chunk.source_order) for chunk in chunks
+                    })
             except DocumentProcessingError as exc:
                 status = "failed"
                 error = str(exc)
             except Exception as exc:
                 raise HTTPException(status_code=502, detail="Lecture du fichier impossible. Reessayez.") from exc
 
+        report["duration_ms"] = max(0, round((perf_counter() - started_at) * 1000))
+        report["error"] = error
+        report_pages = report["pages"]
+        report["ocr_page_count"] = len(report_pages)
+        confidences = [page["confidence"] for page in report_pages if page["confidence"] is not None]
+        if confidences:
+            report["average_ocr_confidence"] = round(sum(confidences) / len(confidences), 3)
         self.client.rpc("save_course_extraction", {
             "target_course_id": str(course_id),
             "result_status": status,
             "result_error": error,
+            "result_report": report,
             "result_chunks": [
                 {"text": chunk.text, "page_number": chunk.page_number, "chunk_index": chunk.chunk_index}
                 | {
@@ -111,7 +139,9 @@ class CourseExtractionService:
                 for chunk in chunks
             ],
         }).execute()
-        return ExtractionResult(course_id=course_id, status=status, chunk_count=len(chunks), error=error)
+        return ExtractionResult(
+            course_id=course_id, status=status, chunk_count=len(chunks), error=error, report=report
+        )
 
 
 def get_course_extraction_service(

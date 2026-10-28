@@ -13,6 +13,16 @@
 .course-extraction-status{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0;font-size:13px}
 .course-extraction-status p{flex-basis:100%;margin:0;color:#9a3434;overflow-wrap:anywhere}
 .course-extraction-status button:disabled{opacity:.6;cursor:wait}
+.course-document-preview{margin:18px 0;border:1px solid #e4e2da;border-radius:7px;background:#fff}
+.course-document-preview-head{min-height:42px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px;border-bottom:1px solid #e4e2da;color:#495349;font-size:12px}
+.course-document-preview-head>span,.course-document-preview-head>a,.course-document-preview-message>a{display:inline-flex;align-items:center;gap:7px}
+.course-document-preview-head>a,.course-document-preview-message>a{color:#42604b;text-decoration:none}
+.course-document-preview-head>a:hover,.course-document-preview-message>a:hover{text-decoration:underline}
+.course-document-pdf{display:block;width:100%;height:min(68vh,760px);min-height:360px;border:0;background:#f2f1ec}
+.course-document-image-wrap{height:min(68vh,760px);min-height:240px;display:grid;place-items:center;overflow:auto;background:#f2f1ec}
+.course-document-image-wrap img{display:block;max-width:100%;max-height:100%;object-fit:contain}
+.course-document-preview-message{min-height:100px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px;padding:18px;color:#686f66;font-size:12px;text-align:center}
+.course-document-preview-message p{margin:0}
 .course-row-field{min-width:0}
 .course-row-field select{width:100%}
 .course-row-field input{width:100%}
@@ -43,6 +53,8 @@
   .course-search{grid-column:1/-1}
   .course-filter{min-width:0}
   .course-filter select{padding:0 6px;font-size:10px}
+  .course-document-pdf{height:65vh;min-height:320px}
+  .course-document-image-wrap{height:55vh;min-height:220px}
   .course-library-row{grid-template-columns:34px minmax(0,1fr) auto;gap:8px;padding:10px}
   .course-row-subject,.course-row-year{grid-column:2;grid-row:auto}
   .course-library-row .file-state{grid-column:2;grid-row:auto}

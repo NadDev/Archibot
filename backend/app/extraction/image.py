@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image, ImageOps
 
 from .base import DocumentChunk, DocumentProcessingError, chunk_text
-from .ocr import recognize_text
+from .ocr import recognize_text_with_confidence
 
 
 MAX_IMAGE_PIXELS = 20_000_000
@@ -19,6 +19,7 @@ def extract_image_chunks(
     *,
     max_chars: int = 1200,
     overlap_chars: int = 160,
+    report: dict[str, object] | None = None,
 ) -> list[DocumentChunk]:
     if not image_bytes:
         raise DocumentProcessingError("The image is empty.")
@@ -37,12 +38,33 @@ def extract_image_chunks(
                 if opened_image.width * opened_image.height > MAX_IMAGE_PIXELS:
                     raise DocumentProcessingError("The image dimensions exceed the supported limit.")
                 image = ImageOps.exif_transpose(opened_image).convert("RGB")
-                text = recognize_text(np.asarray(image))
+                try:
+                    ocr_result = recognize_text_with_confidence(np.asarray(image))
+                except DocumentProcessingError as exc:
+                    if report is not None:
+                        report["pages"] = [{
+                            "locator_type": "image",
+                            "locator": "Image",
+                            "confidence": None,
+                            "character_count": 0,
+                            "error": str(exc)[:300],
+                        }]
+                    raise
+                text = ocr_result.text
     except DocumentProcessingError:
         raise
     except Exception as exc:
         raise DocumentProcessingError("The image is invalid or could not be read.") from exc
 
+    if report is not None:
+        report["source_count"] = 1
+        report["pages"] = [{
+            "locator_type": "image",
+            "locator": "Image",
+            "confidence": ocr_result.confidence,
+            "character_count": len(text),
+            "error": None if text else "No readable text detected.",
+        }]
     chunks = chunk_text(text, max_chars=max_chars, overlap_chars=overlap_chars)
     if not chunks:
         raise DocumentProcessingError("The image contains no readable text.")

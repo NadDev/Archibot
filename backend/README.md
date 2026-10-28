@@ -89,7 +89,7 @@ create table if not exists chunks (
 - Les limites par défaut sont de 1 200 caractères par chunk avec 160 caractères de recouvrement ; elles sont configurables par appel.
 - Les fichiers invalides, vides, protégés ou sans texte extractible sont rejetés avec une erreur explicite. DOCX/PPTX/EPUB sont prévalidés (nombre d'entrées, taille totale décompressée, ratio de compression, chemins et entrées chiffrées). Les images sont limitées à 20 mégapixels ; l'OCR PDF est limité à 30 pages scannées et 12 mégapixels rendus par page.
 - RapidOCR/ONNX Runtime et PyMuPDF exécutent l'OCR localement. La reconnaissance peut normaliser ou omettre des accents ; aucune confiance OCR n'est encore persistée. Les images intégrées aux diaporamas, notes de présentation et rapports détaillés par page restent hors périmètre.
-- DOC/PPT binaires nécessitent un convertisseur LibreOffice configuré (`LIBREOFFICE_BINARY`) et `ARCHIBOT_ENABLE_LEGACY_OFFICE_CONVERSION=true`. La conversion est désactivée par défaut ; n'activer ce drapeau que pour un worker conteneurisé, non privilégié, sans réseau ni secrets, avec limites CPU/mémoire. Un dossier temporaire, le mode headless, un timeout de 60 secondes et une limite de 50 Mio complètent cette isolation, sans la remplacer. L'environnement de développement actuel n'a pas LibreOffice ; les tests vérifient le protocole avec un convertisseur simulé, pas la conversion réelle.
+- DOC/PPT binaires nécessitent Docker en mode conteneurs Linux, une image dédiée `ARCHIBOT_LEGACY_OFFICE_IMAGE` et `ARCHIBOT_ENABLE_LEGACY_OFFICE_CONVERSION=true`. Aucun appel direct à LibreOffice sur l'hôte n'est conservé. Le conteneur est non privilégié, sans réseau, sans secrets transmis, avec racine et entrée en lecture seule, 1 CPU, 512 Mio sans swap et 64 processus maximum. Sa sortie est lue pendant son exécution (50 Mio maximum), les temporaires sont en mémoire et il est supprimé après succès/échec/timeout. Une seule conversion par processus API est admise ; une autre demande reçoit une erreur récupérable. L'environnement Windows actuel n'a pas Docker : commande et flux sont testés, mais l'image et les conversions réelles restent à valider.
 - `app/upload/courses.py` expose l'extraction d'un cours déjà envoyé dans le bucket privé `user-courses`. Le propriétaire est vérifié et le JWT utilisateur est transmis à Storage et PostgREST.
 - Appliquer `sql/course_extraction.sql` après `sql/projects.sql`, `sql/user_courses.sql` et `sql/project_courses.sql`, puis `sql/course_document_locations.sql`. Cette dernière migration préserve les pages PDF existantes, rend la page facultative pour les autres formats, ajoute les localisateurs/formats et élargit l'allowlist MIME privée.
 - L'enregistrement des chunks et du statut est transactionnel. Une relance remplace les chunks sans doublons ; une insertion invalide annule la transaction. Un résultat d'échec supprime les anciens chunks et conserve une raison explicite, sans supprimer le fichier.
@@ -115,3 +115,29 @@ create table if not exists chunks (
 ## Contrats v1
 - metadata: app/schemas.py -> ChunkMetadata
 - sortie assistant: app/schemas.py -> AssistantResponse
+
+## Déploiement du convertisseur Office
+
+Depuis `backend`, sur un hôte Docker Linux (ou Docker Desktop en mode Linux) :
+
+```powershell
+docker build --pull -t archibot-office:local containers/legacy-office
+docker image inspect archibot-office:local --format '{{.Id}}'
+```
+
+Configurer `ARCHIBOT_LEGACY_OFFICE_IMAGE` avec l'identifiant `sha256:...` retourné, puis `ARCHIBOT_ENABLE_LEGACY_OFFICE_CONVERSION=true` dans l'environnement de l'API. Redémarrer l'API. L'image n'est jamais téléchargée pendant une requête ; elle doit être présente sur le daemon local. Ne pas utiliser un daemon distant : l'entrée est un montage local. `LIBREOFFICE_BINARY` n'est plus utilisé.
+
+Le contexte de build contient seulement le convertisseur, pas les secrets de l'API. Reconstruire et scanner l'image régulièrement pour bénéficier des correctifs Debian/LibreOffice, puis conserver l'identifiant immuable validé. Préférer un daemon rootless avec cgroups disponibles sur un hôte dédié. L'accès au daemon Docker reste un privilège important pour l'API ; les limites par processus ne remplacent pas une file de travail globale, et les conteneurs ne garantissent pas l'absence de faille du noyau. En cas de panne du daemon, une suppression peut échouer : surveiller et supprimer les conteneurs `archibot-office-*` abandonnés après rétablissement. Ne pas désactiver les restrictions pour faire passer un document.
+
+Pour le test réel, préparer un DOC et un PPT binaires non sensibles contenant chacun le mot `Architecture`, puis lancer depuis `backend` :
+
+```powershell
+$env:ARCHIBOT_RUN_LEGACY_INTEGRATION = "true"
+$env:ARCHIBOT_ENABLE_LEGACY_OFFICE_CONVERSION = "true"
+$env:ARCHIBOT_LEGACY_OFFICE_IMAGE = "sha256:IDENTIFIANT_IMAGE_VALIDEE"
+$env:ARCHIBOT_LEGACY_TEST_DOC = "C:\fixtures\architecture.doc"
+$env:ARCHIBOT_LEGACY_TEST_PPT = "C:\fixtures\architecture.ppt"
+.\.venv\Scripts\python.exe -m pytest -q tests/test_document_processing.py -k real_container
+```
+
+Sans cet opt-in, ces deux tests sont explicitement ignorés, pas considérés comme validés. Le reste de la suite teste les garde-fous et le flux avec des sous-processus réels sans nécessiter Docker.

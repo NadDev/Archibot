@@ -15,5 +15,12 @@ export default function CourseExtractionStatus({ course, busy, onExtract }: {
       <RefreshCw size={16} /> Réessayer
     </button>}
     {course.extractionError && <p role="alert">{course.extractionError}</p>}
+    {course.extractionReport && <p>
+      Rapport : {course.extractionReport.duration_ms} ms · {course.extractionReport.source_count} source(s)
+      {course.extractionReport.average_ocr_confidence !== null
+        && ` · Confiance OCR moyenne : ${Math.round(course.extractionReport.average_ocr_confidence * 100)} %`}
+      {course.extractionReport.pages.filter((page) => page.error).map((page) =>
+        <span key={`${page.locator_type}-${page.locator}`}> · {page.locator} : {page.error}</span>)}
+    </p>}
   </div>;
 }

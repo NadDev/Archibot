@@ -1,11 +1,12 @@
 import { apiFetch } from "../../api";
-import type { ExtractionStatus } from "../upload/courses";
+import type { ExtractionReport, ExtractionStatus } from "../upload/courses";
 
 type ExtractionResult = {
   course_id: string;
   status: Exclude<ExtractionStatus, "pending">;
   chunk_count: number;
   error: string | null;
+  report: ExtractionReport;
 };
 
 export async function extractCourse(courseId: string): Promise<ExtractionResult> {

@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from io import BytesIO
+import os
 from pathlib import Path
+import runpy
+import subprocess
+import sys
 from types import SimpleNamespace
 from uuid import UUID
 from zipfile import ZIP_STORED, ZipFile
@@ -33,6 +37,7 @@ from app.upload import courses as courses_module
 from app.upload.courses import CourseExtractionService, get_course_extraction_service
 from app.extraction import image as image_module
 from app.extraction import legacy_office as legacy_office_module
+from app.extraction import ocr as ocr_module
 from app.extraction import pdf as pdf_module
 
 
@@ -159,18 +164,30 @@ def test_extract_pdf_chunks_keep_their_source_page() -> None:
 def test_extract_pdf_runs_ocr_only_for_pages_without_native_text(monkeypatch: pytest.MonkeyPatch) -> None:
     recognized_pages: list[tuple[int, int, int]] = []
 
-    def recognize(image: np.ndarray) -> str:
+    def recognize(image: np.ndarray) -> ocr_module.OCRResult:
         recognized_pages.append(image.shape)
-        return "Texte lu sur le scan"
+        return ocr_module.OCRResult("Texte lu sur le scan", 0.92)
 
-    monkeypatch.setattr(pdf_module, "recognize_text", recognize)
-    chunks = extract_pdf_chunks(_pdf_with_text("", "Cette page contient assez de texte natif pour eviter OCR."))
+    monkeypatch.setattr(pdf_module, "recognize_text_with_confidence", recognize)
+    report: dict[str, object] = {}
+    chunks = extract_pdf_chunks(
+        _pdf_with_text("", "Cette page contient assez de texte natif pour eviter OCR."),
+        report=report,
+    )
 
     assert len(chunks) == 2
     assert chunks[0].text == "Texte lu sur le scan"
     assert chunks[0].page_number == 1
     assert chunks[1].page_number == 2
     assert len(recognized_pages) == 1
+    assert report["source_count"] == 2
+    assert report["pages"] == [{
+        "locator_type": "page",
+        "locator": "Page 1",
+        "confidence": 0.92,
+        "character_count": len("Texte lu sur le scan"),
+        "error": None,
+    }]
 
 
 def test_extract_image_chunks_uses_ocr_and_image_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -178,12 +195,13 @@ def test_extract_image_chunks_uses_ocr_and_image_provenance(monkeypatch: pytest.
     Image.new("RGB", (40, 30), "white").save(image_buffer, format="PNG")
     received_shapes: list[tuple[int, ...]] = []
 
-    def recognize(image: np.ndarray) -> str:
+    def recognize(image: np.ndarray) -> ocr_module.OCRResult:
         received_shapes.append(image.shape)
-        return "Plan de ventilation"
+        return ocr_module.OCRResult("Plan de ventilation", 0.88)
 
-    monkeypatch.setattr(image_module, "recognize_text", recognize)
-    chunks = extract_image_chunks(image_buffer.getvalue(), "png")
+    monkeypatch.setattr(image_module, "recognize_text_with_confidence", recognize)
+    report: dict[str, object] = {}
+    chunks = extract_image_chunks(image_buffer.getvalue(), "png", report=report)
 
     assert len(chunks) == 1
     assert chunks[0].text == "Plan de ventilation"
@@ -191,6 +209,7 @@ def test_extract_image_chunks_uses_ocr_and_image_provenance(monkeypatch: pytest.
     assert chunks[0].locator_type == "image"
     assert chunks[0].locator == "Image"
     assert received_shapes == [(30, 40, 3)]
+    assert report["pages"][0]["confidence"] == 0.88
 
 
 def test_extract_docx_keeps_sections_and_tables_without_fake_pages() -> None:
@@ -312,6 +331,9 @@ def test_course_extraction_persists_pages_and_uses_owner_filter() -> None:
 
     assert result.status == "extracted"
     assert result.chunk_count == 2
+    assert result.report["duration_ms"] >= 0
+    assert result.report["source_count"] == 2
+    assert client.saved["result_report"] == result.report
     assert client.filters == [("id", str(course_id)), ("owner_id", "user-a")]
     assert client.saved["result_chunks"] == [
         {"text": "first page", "page_number": 1, "chunk_index": 1,
@@ -368,7 +390,11 @@ def test_course_extraction_leaves_other_formats_stored_without_parsing() -> None
 
 def test_course_extraction_dispatches_image_ocr_and_persists_locator(monkeypatch: pytest.MonkeyPatch) -> None:
     client = FakeCourseClient(_png_image(), "image/png")
-    monkeypatch.setattr(image_module, "recognize_text", lambda image: "Texte de plan reconnu")
+    monkeypatch.setattr(
+        image_module,
+        "recognize_text_with_confidence",
+        lambda image: ocr_module.OCRResult("Texte de plan reconnu", 0.9),
+    )
 
     result = CourseExtractionService(client, "user-a").extract(UUID(client.rows[0]["id"]))
 
@@ -382,6 +408,8 @@ def test_course_extraction_dispatches_image_ocr_and_persists_locator(monkeypatch
         "source_order": 1,
         "document_format": "png",
     }]
+    assert result.report["average_ocr_confidence"] == 0.9
+    assert client.saved["result_report"] == result.report
 
 
 @pytest.mark.parametrize(
@@ -392,7 +420,7 @@ def test_course_extraction_dispatches_image_ocr_and_persists_locator(monkeypatch
     ],
     ids=["doc", "ppt"],
 )
-def test_legacy_office_conversion_uses_headless_isolated_profile(
+def test_legacy_office_conversion_uses_restricted_container(
     monkeypatch: pytest.MonkeyPatch,
     extractor,
     converted_content: bytes,
@@ -400,31 +428,40 @@ def test_legacy_office_conversion_uses_headless_isolated_profile(
     locator_type: str,
 ) -> None:
     monkeypatch.setenv(legacy_office_module.LEGACY_CONVERSION_OPT_IN, "true")
-    monkeypatch.setenv("LIBREOFFICE_BINARY", "fake-libreoffice")
+    monkeypatch.setenv("ARCHIBOT_LEGACY_OFFICE_IMAGE", "archibot-office:test")
+    monkeypatch.setattr(legacy_office_module.shutil, "which", lambda _: "docker")
     calls: list[dict[str, Any]] = []
 
     def run(command, **options):
         calls.append({"command": command, **options})
-        output_dir = Path(command[command.index("--outdir") + 1])
-        (output_dir / f"source.{target_format}").write_bytes(converted_content)
-        return SimpleNamespace(returncode=0)
+        return SimpleNamespace(returncode=0, stdout=b"0\n")
 
     monkeypatch.setattr(legacy_office_module.subprocess, "run", run)
+    monkeypatch.setattr(legacy_office_module, "_read_conversion", lambda *args: converted_content)
     chunks = extractor(_legacy_office_file())
 
     assert chunks[0].locator_type == locator_type
-    assert "--headless" in calls[0]["command"]
-    assert any(arg.startswith("-env:UserInstallation=file:") for arg in calls[0]["command"])
-    assert calls[0]["timeout"] == legacy_office_module.CONVERSION_TIMEOUT_SECONDS
-    assert calls[0]["capture_output"] is True
+    create = calls[0]["command"]
+    assert [call["command"][1] for call in calls] == ["create", "inspect", "rm"]
+    for option, value in {
+        "--network": "none", "--user": "65534:65534", "--cap-drop": "ALL",
+        "--security-opt": "no-new-privileges=true", "--memory": "512m",
+        "--memory-swap": "512m", "--cpus": "1", "--pids-limit": "64", "--pull": "never",
+    }.items():
+        assert create[create.index(option) + 1] == value
+    assert "--read-only" in create and "/opt/archibot/convert.py" in create
+    assert create[create.index("--mount") + 1].endswith("target=/input,readonly")
+    assert calls[-1]["command"][2] == "--force"
+    mounted_path = create[create.index("--mount") + 1].split("source=", 1)[1].split(",target=", 1)[0]
+    assert not Path(mounted_path).exists()
 
 
-def test_legacy_office_conversion_fails_explicitly_without_libreoffice(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_legacy_office_conversion_fails_explicitly_without_docker(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(legacy_office_module.LEGACY_CONVERSION_OPT_IN, "true")
-    monkeypatch.delenv("LIBREOFFICE_BINARY", raising=False)
+    monkeypatch.setenv("ARCHIBOT_LEGACY_OFFICE_IMAGE", "archibot-office:test")
     monkeypatch.setattr(legacy_office_module.shutil, "which", lambda _: None)
 
-    with pytest.raises(DocumentProcessingError, match="requires LibreOffice"):
+    with pytest.raises(DocumentProcessingError, match="requires Docker"):
         extract_doc_chunks(_legacy_office_file())
 
 
@@ -450,6 +487,141 @@ def test_course_extraction_reports_disabled_legacy_conversion(monkeypatch: pytes
 def test_legacy_office_mime_types_are_connected_to_converters() -> None:
     assert courses_module.EXTRACTORS["application/msword"] == ("doc", extract_doc_chunks)
     assert courses_module.EXTRACTORS["application/vnd.ms-powerpoint"] == ("ppt", extract_ppt_chunks)
+
+
+@pytest.mark.parametrize(
+    ("script", "error"),
+    [
+        ("import sys; sys.stdout.buffer.write(b'converted')", None),
+        ("import sys; sys.stdout.buffer.write(b'x' * 33)", "exceeds 50 MB"),
+        ("import sys; sys.exit(3)", "could not convert"),
+        ("import sys; sys.stdin.buffer.read()", "60-second limit"),
+    ],
+    ids=["success", "output-limit", "process-failure", "timeout"],
+)
+def test_legacy_office_stream_is_bounded_and_process_is_reaped(
+    monkeypatch: pytest.MonkeyPatch, script: str, error: str | None,
+) -> None:
+    original_popen = subprocess.Popen
+    processes = []
+
+    def launch(command, **options):
+        assert command == ["docker", "start", "--attach", "test-container"]
+        process = original_popen(
+            [sys.executable, "-c", script], stdin=subprocess.PIPE, **options,
+        )
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(legacy_office_module.subprocess, "Popen", launch)
+    monkeypatch.setattr(legacy_office_module, "MAX_LEGACY_FILE_BYTES", 32)
+    monkeypatch.setattr(legacy_office_module, "CONVERSION_TIMEOUT_SECONDS", 1)
+    if error:
+        with pytest.raises(DocumentProcessingError, match=error):
+            legacy_office_module._read_conversion("docker", "test-container")
+    else:
+        assert legacy_office_module._read_conversion("docker", "test-container") == b"converted"
+    assert len(processes) == 1
+    assert processes[0].poll() is not None
+
+
+@pytest.mark.parametrize("failure_stage", ["create", "stream", "inspect", "cleanup"])
+def test_legacy_office_container_cleanup_and_slot_release_on_failure(
+    monkeypatch: pytest.MonkeyPatch, failure_stage: str,
+) -> None:
+    monkeypatch.setenv(legacy_office_module.LEGACY_CONVERSION_OPT_IN, "true")
+    monkeypatch.setenv("ARCHIBOT_LEGACY_OFFICE_IMAGE", "archibot-office:test")
+    monkeypatch.setattr(legacy_office_module.shutil, "which", lambda _: "docker")
+    calls: list[list[str]] = []
+
+    def run(command, **options):
+        calls.append(command)
+        if command[1] == failure_stage or (command[1] == "rm" and failure_stage == "cleanup"):
+            raise subprocess.CalledProcessError(1, command)
+        return SimpleNamespace(returncode=0, stdout=b"0\n")
+
+    def stream(*args):
+        if failure_stage == "stream":
+            raise DocumentProcessingError("Simulated stream timeout")
+        return b"converted"
+
+    monkeypatch.setattr(legacy_office_module.subprocess, "run", run)
+    monkeypatch.setattr(legacy_office_module, "_read_conversion", stream)
+    with pytest.raises(DocumentProcessingError):
+        extract_doc_chunks(_legacy_office_file())
+    assert calls[-1][1:3] == ["rm", "--force"]
+    assert calls[-1][-1] == calls[0][calls[0].index("--name") + 1]
+    assert legacy_office_module._conversion_slot.acquire(blocking=False)
+    legacy_office_module._conversion_slot.release()
+
+
+def test_legacy_office_busy_converter_is_rejected_before_start(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(legacy_office_module.LEGACY_CONVERSION_OPT_IN, "true")
+    monkeypatch.setenv("ARCHIBOT_LEGACY_OFFICE_IMAGE", "archibot-office:test")
+    monkeypatch.setattr(legacy_office_module.shutil, "which", lambda _: "docker")
+    assert legacy_office_module._conversion_slot.acquire(blocking=False)
+    try:
+        with pytest.raises(DocumentProcessingError, match="busy"):
+            extract_doc_chunks(_legacy_office_file())
+    finally:
+        legacy_office_module._conversion_slot.release()
+
+
+@pytest.mark.parametrize("extension,target_format", [("doc", "docx"), ("ppt", "pptx")])
+def test_legacy_office_worker_streams_only_converted_bytes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, extension: str, target_format: str,
+) -> None:
+    worker = runpy.run_path(str(Path(__file__).parents[1] / "containers" / "legacy-office" / "convert.py"))
+    convert = worker["convert"]
+    output = tmp_path / f"source.{target_format}"
+    output.write_bytes(b"converted data")
+    stdout = BytesIO()
+    calls = []
+
+    def run(command, **options):
+        calls.append((command, options))
+        return SimpleNamespace(returncode=0)
+
+    def output_path(path: str) -> Path:
+        assert path == f"/work/source.{target_format}"
+        return output
+
+    monkeypatch.setitem(convert.__globals__, "Path", output_path)
+    monkeypatch.setitem(convert.__globals__, "sys", SimpleNamespace(stdout=SimpleNamespace(buffer=stdout)))
+    monkeypatch.setattr(subprocess, "run", run)
+    convert(extension)
+
+    command, options = calls[0]
+    assert command[-1] == f"/input/source.{extension}"
+    assert command[command.index("--convert-to") + 1] == target_format
+    assert "-env:UserInstallation=file:///work/profile" in command
+    assert options["timeout"] == 45
+    assert options["stdout"] == subprocess.DEVNULL
+    assert stdout.getvalue() == b"converted data"
+
+    monkeypatch.setitem(convert.__globals__, "MAX_OUTPUT_BYTES", 2)
+    with pytest.raises(ValueError, match="Invalid conversion output"):
+        convert(extension)
+
+
+@pytest.mark.skipif(
+    os.environ.get("ARCHIBOT_RUN_LEGACY_INTEGRATION") != "true",
+    reason="Requires a built Docker image and real DOC/PPT fixtures; opt in explicitly.",
+)
+@pytest.mark.parametrize(
+    "fixture_variable,extractor,locator_type",
+    [("ARCHIBOT_LEGACY_TEST_DOC", extract_doc_chunks, "section"),
+     ("ARCHIBOT_LEGACY_TEST_PPT", extract_ppt_chunks, "slide")],
+    ids=["doc", "ppt"],
+)
+def test_legacy_office_real_container(fixture_variable: str, extractor, locator_type: str) -> None:
+    fixture = os.environ.get(fixture_variable)
+    assert fixture, f"Set {fixture_variable} to a real binary fixture containing Architecture."
+    data = Path(fixture).read_bytes()
+    assert data.startswith(legacy_office_module.OLE_COMPOUND_FILE_SIGNATURE)
+    chunks = extractor(data)
+    assert "Architecture" in " ".join(chunk.text for chunk in chunks)
+    assert all(chunk.locator_type == locator_type and chunk.page_number is None for chunk in chunks)
 
 
 def test_course_extraction_rejects_foreign_storage_path() -> None:

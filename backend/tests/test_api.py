@@ -118,7 +118,14 @@ def test_course_extraction_endpoint_returns_persisted_result() -> None:
     response = client.post(f"/v1/courses/{course_id}/extract")
 
     assert response.status_code == 200
-    assert response.json() == {"course_id": course_id, "status": "extracted", "chunk_count": 2, "error": None}
+    body = response.json()
+    assert body["course_id"] == course_id
+    assert body["status"] == "extracted"
+    assert body["chunk_count"] == 2
+    assert body["error"] is None
+    assert body["report"]["duration_ms"] >= 0
+    assert body["report"]["source_count"] == 2
+    assert storage_client.saved["result_report"] == body["report"]
     assert len(storage_client.saved["result_chunks"]) == 2
 
 

@@ -1,6 +1,22 @@
 import { supabase } from "../../supabase";
 
 export type ExtractionStatus = "pending" | "extracted" | "failed" | "unsupported";
+export type ExtractionPageReport = {
+  locator_type: "page" | "image";
+  locator: string;
+  confidence: number | null;
+  character_count: number;
+  error: string | null;
+};
+export type ExtractionReport = {
+  schema_version: number;
+  duration_ms: number;
+  source_count: number;
+  ocr_page_count: number;
+  average_ocr_confidence: number | null;
+  pages: ExtractionPageReport[];
+  error: string | null;
+};
 export type CourseDocument = {
   id: string;
   title: string;
@@ -13,6 +29,7 @@ export type CourseDocument = {
   contentType: string;
   extractionStatus: ExtractionStatus;
   extractionError: string | null;
+  extractionReport: ExtractionReport | null;
 };
 export type CourseRow = {
   id: string;
@@ -26,9 +43,10 @@ export type CourseRow = {
   created_at: string;
   extraction_status: ExtractionStatus;
   extraction_error: string | null;
+  extraction_report: ExtractionReport | null;
 };
 
-export const courseColumns = "id, title, course, subject, study_year, storage_path, content_type, file_size, created_at, extraction_status, extraction_error";
+export const courseColumns = "id, title, course, subject, study_year, storage_path, content_type, file_size, created_at, extraction_status, extraction_error, extraction_report";
 export const extractionLabels: Record<ExtractionStatus, string> = {
   pending: "Extraction en attente",
   extracted: "Texte extrait",
@@ -72,6 +90,7 @@ export function mapCourse(row: CourseRow): CourseDocument {
     contentType: row.content_type,
     extractionStatus: row.extraction_status,
     extractionError: row.extraction_error,
+    extractionReport: row.extraction_report?.schema_version ? row.extraction_report : null,
   };
 }
 

@@ -37,6 +37,7 @@ import { supabase } from "./supabase";
 import { courseColumns, extractionLabels, mapCourse, uploadCourse, type CourseDocument, type CourseRow } from "./features/upload/courses";
 import { extractCourse } from "./features/extraction/courses";
 import CourseExtractionStatus from "./features/extraction/CourseExtractionStatus";
+import CourseDocumentPreview from "./features/extraction/CourseDocumentPreview";
 
 const assistantPortrait = new URL("../../docs/image.png", import.meta.url).href;
 
@@ -392,11 +393,11 @@ function WorkspaceApp({ displayName, greetingName, userEmail, userId, onSignOut 
     extractionRequests.current.add(id);
     setExtractingCourseIds((ids) => [...ids, id]);
     setGeneralCourses((items) => items.map((course) => course.id === id
-      ? { ...course, status: "Extraction en cours…", extractionError: null } : course));
+      ? { ...course, status: "Extraction en cours…", extractionError: null, extractionReport: null } : course));
     try {
       const result = await extractCourse(id);
       setGeneralCourses((items) => items.map((course) => course.id === id
-        ? { ...course, status: extractionLabels[result.status], extractionStatus: result.status, extractionError: result.error } : course));
+        ? { ...course, status: extractionLabels[result.status], extractionStatus: result.status, extractionError: result.error, extractionReport: result.report } : course));
     } catch (error) {
       setGeneralCourses((items) => items.map((course) => course.id === id
         ? { ...course, status: "Extraction à relancer", extractionStatus: "failed", extractionError: getErrorMessage(error) } : course));
@@ -775,6 +776,7 @@ function GeneralCoursesView({
           <section className="course-review-panel">
             <button className="text-button" type="button" onClick={onExitReview}><ArrowLeft size={15} /> Tous les cours</button>
             <div className="feature-page-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> {reviewingCourse.course.toUpperCase()}</div><h2>{reviewingCourse.title}</h2><p>Révision indépendante de tes projets · {reviewingCourse.status}</p></div></div>
+            <CourseDocumentPreview course={reviewingCourse} />
             <CourseExtractionStatus course={reviewingCourse} busy={extractingCourseIds.includes(reviewingCourse.id)} onExtract={onExtract} />
             <div className="course-review-actions"><button className="secondary-button" type="button" onClick={() => onToast("La synthèse sera disponible après connexion de l’API documentaire")}>Générer une synthèse</button><button className="primary-button" type="button" onClick={() => onToast("Le quiz sera disponible après connexion de l’API pédagogique")}>Lancer un quiz</button></div>
           </section>
